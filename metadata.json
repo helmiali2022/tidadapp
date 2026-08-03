@@ -1,0 +1,6 @@
+{
+  "name": "التعداد السكاني - قرية ذي الجمال",
+  "description": "تطبيق ويب تفاعلي متكامل للتعداد السكاني والمساكن الخاص بقرية ذي الجمال مع مزامنة كاملة وجدول بيانات جوجل",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
