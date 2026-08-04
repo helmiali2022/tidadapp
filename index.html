@@ -3,18 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>نظام التعداد السكاني – قرية ذي الجمال</title>
+    <title>نظام التعداد السكاني — قرية ذي الجمال</title>
     <meta name="description" content="منصة التعداد السكاني وإدارة بيانات الأسر والمحلات لقرية ذي الجمال" />
+    
+    <!-- Theme & App Config -->
+    <meta name="theme-color" content="#064E3B" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="تعداد ذي الجمال" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Modern Colorful SVG Favicon & Apple Touch Icon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><defs><linearGradient id='bg' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='%230F172A'/><stop offset='50%' stop-color='%23064E3B'/><stop offset='100%' stop-color='%23022C22'/></linearGradient><linearGradient id='house' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='%2334D399'/><stop offset='100%' stop-color='%23059669'/></linearGradient><linearGradient id='roof' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='%23F59E0B'/><stop offset='100%' stop-color='%23D97706'/></linearGradient><linearGradient id='chart' x1='0%' y1='0%' x2='0%' y2='100%'><stop offset='0%' stop-color='%2360A5FA'/><stop offset='100%' stop-color='%232563EB'/></linearGradient></defs><rect width='512' height='512' rx='128' fill='url(%23bg)'/><rect x='16' y='16' width='480' height='480' rx='112' fill='none' stroke='%23F59E0B' stroke-width='8' stroke-opacity='0.4'/><path d='M 256 96 L 416 224 L 384 224 L 384 384 C 384 397 373 408 360 408 L 152 408 C 139 408 128 397 128 384 L 128 224 L 96 224 Z' fill='url(%23house)'/><path d='M 256 75 L 432 215 C 440 221 440 233 430 237 C 424 239 416 237 410 231 L 256 109 L 102 231 C 96 237 88 239 82 237 C 72 233 72 221 80 215 Z' fill='url(%23roof)'/><rect x='224' y='280' width='64' height='128' rx='12' fill='%230F172A'/><rect x='155' y='310' width='36' height='98' rx='8' fill='url(%23chart)'/><rect x='321' y='260' width='36' height='148' rx='8' fill='url(%23chart)'/><circle cx='256' cy='210' r='28' fill='%23F59E0B'/><path d='M 216 258 C 216 238 234 233 256 233 C 278 233 296 238 296 258 L 296 265 L 216 265 Z' fill='%23F59E0B'/></svg>" />
+    <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><defs><linearGradient id='bg' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='%230F172A'/><stop offset='50%' stop-color='%23064E3B'/><stop offset='100%' stop-color='%23022C22'/></linearGradient><linearGradient id='house' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='%2334D399'/><stop offset='100%' stop-color='%23059669'/></linearGradient><linearGradient id='roof' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='%23F59E0B'/><stop offset='100%' stop-color='%23D97706'/></linearGradient><linearGradient id='chart' x1='0%' y1='0%' x2='0%' y2='100%'><stop offset='0%' stop-color='%2360A5FA'/><stop offset='100%' stop-color='%232563EB'/></linearGradient></defs><rect width='512' height='512' rx='128' fill='url(%23bg)'/><rect x='16' y='16' width='480' height='480' rx='112' fill='none' stroke='%23F59E0B' stroke-width='8' stroke-opacity='0.4'/><path d='M 256 96 L 416 224 L 384 224 L 384 384 C 384 397 373 408 360 408 L 152 408 C 139 408 128 397 128 384 L 128 224 L 96 224 Z' fill='url(%23house)'/><path d='M 256 75 L 432 215 C 440 221 440 233 430 237 C 424 239 416 237 410 231 L 256 109 L 102 231 C 96 237 88 239 82 237 C 72 233 72 221 80 215 Z' fill='url(%23roof)'/><rect x='224' y='280' width='64' height='128' rx='12' fill='%230F172A'/><rect x='155' y='310' width='36' height='98' rx='8' fill='url(%23chart)'/><rect x='321' y='260' width='36' height='148' rx='8' fill='url(%23chart)'/><circle cx='256' cy='210' r='28' fill='%23F59E0B'/><path d='M 216 258 C 216 238 234 233 256 233 C 278 233 296 238 296 258 L 296 265 L 216 265 Z' fill='%23F59E0B'/></svg>" />
     
     <!-- Open Graph / WhatsApp / Facebook -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="نظام التعداد السكاني – قرية ذي الجمال" />
+    <meta property="og:title" content="نظام التعداد السكاني — قرية ذي الجمال" />
     <meta property="og:description" content="منصة التعداد السكاني وإدارة بيانات الأسر والمحلات لقرية ذي الجمال" />
     <meta property="og:site_name" content="تعداد ذي الجمال" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="نظام التعداد السكاني – قرية ذي الجمال" />
+    <meta name="twitter:title" content="نظام التعداد السكاني — قرية ذي الجمال" />
     <meta name="twitter:description" content="منصة التعداد السكاني وإدارة بيانات الأسر والمحلات لقرية ذي الجمال" />
   </head>
   <body>

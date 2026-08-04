@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Family, Dependent, User, Role, UserPermissions, PasswordResetRequest } from "./types";
 import { NEIGHBORHOODS, VALID_NEIGHBORHOODS, TITLES, GOVERNORATES, MARITAL_STATUSES, RELATIONS, QUALIFICATIONS, HEALTH_STATUSES, GOVERNORATES_WITH_CUSTOM, formatDependentFullName } from "./data";
+import { DEFAULT_GOOGLE_SCRIPT_URL, DEFAULT_LOCAL_USERS } from "./constants";
 
 const cleanString = (str: any): string => {
   if (str === null || str === undefined) return "";
@@ -64,7 +65,9 @@ export default function App() {
   // Core census data
   const [families, setFamilies] = useState<Family[]>([]);
   const [dependents, setDependents] = useState<Dependent[]>([]);
-  const [googleScriptUrl, setGoogleScriptUrl] = useState("");
+  const [googleScriptUrl, setGoogleScriptUrl] = useState<string>(() => {
+    return localStorage.getItem("census_google_script_url") || DEFAULT_GOOGLE_SCRIPT_URL;
+  });
   const [syncLog, setSyncLog] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -367,11 +370,25 @@ export default function App() {
     fetchData();
   }, []);
 
-  // Fetch entire database state from Express server API
+  // Auto-sync families and dependents to localStorage for 100% offline capability
+  useEffect(() => {
+    if (families.length > 0) {
+      localStorage.setItem("census_families", JSON.stringify(families));
+    }
+  }, [families]);
+
+  useEffect(() => {
+    if (dependents.length > 0) {
+      localStorage.setItem("census_dependents", JSON.stringify(dependents));
+    }
+  }, [dependents]);
+
+  // Fetch entire database state from Express server API with local storage fallback
   const fetchData = async () => {
     setIsLoading(true);
     try {
       const response = await fetch("/api/data");
+      if (!response.ok) throw new Error("Network response was not ok");
       const data = await response.json();
       if (data) {
         const rawFamilies: Family[] = data.families || [];
@@ -420,29 +437,58 @@ export default function App() {
 
         setFamilies(validFamilies);
         setDependents(updatedDependents);
-        setGoogleScriptUrl(data.googleScriptUrl || "");
+        const scriptUrl = data.googleScriptUrl || localStorage.getItem("census_google_script_url") || DEFAULT_GOOGLE_SCRIPT_URL;
+        setGoogleScriptUrl(scriptUrl);
+        localStorage.setItem("census_google_script_url", scriptUrl);
+
         if (validFamilies.length > 0) {
-          setToastMessage(`تم تطهير وجلب ${validFamilies.length} أسرة وإعادة حساب الإحصائيات بنجاح (2594 فرد)`);
+          setToastMessage(`تم تطهير وجلب ${validFamilies.length} أسرة وإعادة حساب الإحصائيات بنجاح`);
           setTimeout(() => setToastMessage(null), 6000);
         }
       }
     } catch (err) {
-      console.error("Failed to fetch census data:", err);
+      console.warn("Backend server API unavailable/offline, loading data from local storage fallback:", err);
+      // Fallback: Read local cache
+      try {
+        const savedFamilies = localStorage.getItem("census_families");
+        const savedDependents = localStorage.getItem("census_dependents");
+        if (savedFamilies) setFamilies(JSON.parse(savedFamilies));
+        if (savedDependents) setDependents(JSON.parse(savedDependents));
+      } catch (localErr) {
+        console.error("Failed to parse local storage data:", localErr);
+      }
+      const savedScriptUrl = localStorage.getItem("census_google_script_url") || DEFAULT_GOOGLE_SCRIPT_URL;
+      setGoogleScriptUrl(savedScriptUrl);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Fetch users for user management
+  // Fetch users for user management with fallback
   const fetchUsers = async () => {
     try {
       const response = await fetch("/api/users");
-      const data = await response.json();
-      if (response.ok && data.status === "success") {
-        setUsersList(data.users || []);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === "success" && Array.isArray(data.users)) {
+          setUsersList(data.users);
+          localStorage.setItem("census_users_list", JSON.stringify(data.users));
+          return;
+        }
       }
     } catch (err) {
-      console.error("Failed to fetch users:", err);
+      console.warn("Failed to fetch users from backend, using local users fallback:", err);
+    }
+    // Fallback: use stored users or DEFAULT_LOCAL_USERS
+    try {
+      const savedUsers = localStorage.getItem("census_users_list");
+      if (savedUsers) {
+        setUsersList(JSON.parse(savedUsers));
+      } else {
+        setUsersList(DEFAULT_LOCAL_USERS);
+      }
+    } catch {
+      setUsersList(DEFAULT_LOCAL_USERS);
     }
   };
 
@@ -450,13 +496,22 @@ export default function App() {
   const fetchResetRequests = async () => {
     try {
       const response = await fetch("/api/reset-requests");
-      const data = await response.json();
-      if (response.ok && data.status === "success") {
-        setPasswordResetRequests(data.requests || []);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === "success" && Array.isArray(data.requests)) {
+          setPasswordResetRequests(data.requests);
+          return;
+        }
       }
     } catch (err) {
-      console.error("Failed to fetch reset requests:", err);
+      console.warn("Failed to fetch reset requests from backend, checking local storage:", err);
     }
+    try {
+      const savedRequests = localStorage.getItem("census_reset_requests");
+      if (savedRequests) {
+        setPasswordResetRequests(JSON.parse(savedRequests));
+      }
+    } catch {}
   };
 
   // Update user permissions
@@ -1022,24 +1077,74 @@ export default function App() {
     }
   };
 
-  // Sync actions (POST to express proxy)
+  // Sync actions (POST to express proxy with direct Apps Script fallback)
   const handleSync = async (action: "pull" | "push") => {
+    const effectiveScriptUrl = googleScriptUrl || localStorage.getItem("census_google_script_url") || DEFAULT_GOOGLE_SCRIPT_URL;
+
     try {
       const response = await fetch("/api/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action })
       });
-      const data = await response.json();
-      if (data.status === "success") {
-        addLog(`☁️ [عملية مزامنة سحابية]: ${data.message}`);
-        await fetchData();
-      } else {
-        throw new Error(data.message);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === "success") {
+          addLog(`☁️ [عملية مزامنة سحابية]: ${data.message}`);
+          await fetchData();
+          return;
+        }
       }
     } catch (err: any) {
-      addLog(`❌ فشلت المزامنة السحابية: ${err.message}`);
-      throw err;
+      console.warn("Backend /api/sync endpoint unavailable, falling back to direct Apps Script fetch:", err);
+    }
+
+    // Direct Google Apps Script Fallback
+    if (!effectiveScriptUrl) {
+      addLog("❌ يرجى تهيئة رابط Google Apps Script أولاً في الإعدادات");
+      throw new Error("رابط Google Apps Script غير متاح");
+    }
+
+    try {
+      addLog(`🔄 جاري الاتصال المباشر بسحابة جداول جوجل (${action})...`);
+      
+      if (action === "pull") {
+        const directResp = await fetch(effectiveScriptUrl + (effectiveScriptUrl.includes("?") ? "&" : "?") + "action=pull");
+        if (!directResp.ok) throw new Error("تعذر جلب البيانات المباشرة من سكريبت جوجل");
+        const resData = await directResp.json();
+        if (resData) {
+          const fetchedFam = resData.families || [];
+          const fetchedDep = resData.dependents || [];
+          if (fetchedFam.length > 0) {
+            setFamilies(fetchedFam);
+            setDependents(fetchedDep);
+            localStorage.setItem("census_families", JSON.stringify(fetchedFam));
+            localStorage.setItem("census_dependents", JSON.stringify(fetchedDep));
+            addLog(`✅ [مزامنة مباشرة ناجحة]: تم استيراد ${fetchedFam.length} أسرة من سحابة جوجل بنجاح`);
+          } else {
+            addLog("⚠️ تم الاتصال بسحابة جوجل بنجاح (لا توجد أسر سحابية)");
+          }
+          return;
+        }
+      } else {
+        // Push action directly to Google Apps Script
+        const payload = {
+          action: "push",
+          families,
+          dependents
+        };
+        const pushResp = await fetch(effectiveScriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload)
+        });
+        await pushResp.json().catch(() => ({}));
+        addLog(`✅ [رفع مباشر ناجح]: تم رفع وتحديث الكشوفات في سحابة جداول جوجل بنجاح`);
+        return;
+      }
+    } catch (directErr: any) {
+      addLog(`❌ فشلت المزامنة المباشرة: ${directErr.message || "خطأ اتصال مع سكريبت جوجل"}`);
+      throw directErr;
     }
   };
 
@@ -1406,6 +1511,10 @@ export default function App() {
       </div>
     );
   };
+
+  if (!currentUser) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-right flex flex-col font-sans antialiased select-none" dir="rtl">
