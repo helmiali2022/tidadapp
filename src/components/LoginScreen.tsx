@@ -1,5 +1,5 @@
 import { useState, FormEvent } from "react";
-import { Shield, Key, Eye, EyeOff, User, Users, ClipboardCheck, ArrowRightLeft, AlertCircle, X, CheckCircle2, PhoneCall, Sparkles, UserCheck } from "lucide-react";
+import { Shield, Key, Eye, EyeOff, User, ClipboardCheck, ArrowRightLeft, AlertCircle, X, CheckCircle2, PhoneCall } from "lucide-react";
 import { User as UserType } from "../types";
 import { DEFAULT_LOCAL_USERS } from "../constants";
 
@@ -139,7 +139,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
     }
 
     setIsLoading(false);
-    setError("يرجى إدخال اسم المستخدم، البريد الإلكتروني، أو اختيار أحد الحسابات التجريبية.");
+    setError("بيانات الحساب غير صحيحة. يرجى التحقق من اسم المستخدم، البريد الإلكتروني، أو رقم الهاتف.");
   };
 
   const handleLoginSubmit = (e: FormEvent) => {
@@ -149,10 +149,6 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       return;
     }
     executeLogin(loginKey, password);
-  };
-
-  const handleQuickLogin = (usernameVal: string) => {
-    executeLogin(usernameVal, "123456");
   };
 
   return (
@@ -224,99 +220,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 justify-center md:justify-start">
                 <span>بوابة الدخول للنظام</span>
               </h2>
-              <p className="text-xs text-slate-500">اختر حساباً تجريبياً أو سجل الدخول ببياناتك لبدء العمل الميداني فوراً</p>
-            </div>
-
-            {/* Quick Demo Login Cards */}
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-400 block tracking-wider uppercase">حسابات الوصول السريع التجريبية</span>
-                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">دخول بنقرة واحدة</span>
-              </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {/* Data Collector 1 */}
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin("N77393477@Gmail.com")}
-                  disabled={isLoading}
-                  className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-emerald-50/70 border border-slate-200 hover:border-emerald-300 rounded-xl text-right select-none cursor-pointer transition-all disabled:opacity-50 group"
-                >
-                  <div className="flex items-center gap-2.5 overflow-hidden">
-                    <div className="bg-emerald-100 group-hover:bg-emerald-600 group-hover:text-white p-2 rounded-lg text-emerald-700 shrink-0 transition-colors">
-                      <Users className="w-4 h-4" />
-                    </div>
-                    <div className="overflow-hidden">
-                      <span className="text-xs font-bold text-slate-950 block truncate">أ. نجيب الخطيب</span>
-                      <span className="text-[10px] text-slate-500 block truncate">جامع بيانات ميداني</span>
-                    </div>
-                  </div>
-                  <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold font-mono shrink-0">ENUM</span>
-                </button>
-
-                {/* Data Collector 2 */}
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin("esamalhateb1988@gmail.com")}
-                  disabled={isLoading}
-                  className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-emerald-50/70 border border-slate-200 hover:border-emerald-300 rounded-xl text-right select-none cursor-pointer transition-all disabled:opacity-50 group"
-                >
-                  <div className="flex items-center gap-2.5 overflow-hidden">
-                    <div className="bg-emerald-100 group-hover:bg-emerald-600 group-hover:text-white p-2 rounded-lg text-emerald-700 shrink-0 transition-colors">
-                      <UserCheck className="w-4 h-4" />
-                    </div>
-                    <div className="overflow-hidden">
-                      <span className="text-xs font-bold text-slate-950 block truncate">عصام الخطيب</span>
-                      <span className="text-[10px] text-slate-500 block truncate">جامع بيانات ميداني</span>
-                    </div>
-                  </div>
-                  <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold font-mono shrink-0">ENUM</span>
-                </button>
-
-                {/* Super Admin 1 */}
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin("helmi")}
-                  disabled={isLoading}
-                  className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-indigo-50/70 border border-slate-200 hover:border-indigo-300 rounded-xl text-right select-none cursor-pointer transition-all disabled:opacity-50 group"
-                >
-                  <div className="flex items-center gap-2.5 overflow-hidden">
-                    <div className="bg-indigo-100 group-hover:bg-indigo-600 group-hover:text-white p-2 rounded-lg text-indigo-700 shrink-0 transition-colors">
-                      <Shield className="w-4 h-4" />
-                    </div>
-                    <div className="overflow-hidden">
-                      <span className="text-xs font-bold text-slate-950 block truncate">حلمي علي هزاع</span>
-                      <span className="text-[10px] text-slate-500 block truncate">مشرف عام النظام</span>
-                    </div>
-                  </div>
-                  <span className="text-[9px] bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded font-bold font-mono shrink-0">ADMIN</span>
-                </button>
-
-                {/* Super Admin 2 */}
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin("helmiali")}
-                  disabled={isLoading}
-                  className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-indigo-50/70 border border-slate-200 hover:border-indigo-300 rounded-xl text-right select-none cursor-pointer transition-all disabled:opacity-50 group"
-                >
-                  <div className="flex items-center gap-2.5 overflow-hidden">
-                    <div className="bg-indigo-100 group-hover:bg-indigo-600 group-hover:text-white p-2 rounded-lg text-indigo-700 shrink-0 transition-colors">
-                      <Sparkles className="w-4 h-4" />
-                    </div>
-                    <div className="overflow-hidden">
-                      <span className="text-xs font-bold text-slate-950 block truncate">حلمي الخطيب</span>
-                      <span className="text-[10px] text-slate-500 block truncate">مدير النظام</span>
-                    </div>
-                  </div>
-                  <span className="text-[9px] bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded font-bold font-mono shrink-0">ADMIN</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="relative flex py-1 items-center">
-              <div className="flex-grow border-t border-slate-200"></div>
-              <span className="flex-shrink mx-4 text-[10px] text-slate-400 font-bold">أو تسجيل الدخول يدويّاً</span>
-              <div className="flex-grow border-t border-slate-200"></div>
+              <p className="text-xs text-slate-500">أدخل بيانات الحساب الخاص بك للوصول لنظام التعداد السكاني</p>
             </div>
 
             {/* Custom Manual Login */}
@@ -349,7 +253,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                 {/* Password */}
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-600">كلمة المرور (اختياري للحسابات المحفوفة)</label>
+                    <label className="text-xs font-bold text-slate-600">كلمة المرور</label>
                     <button
                       type="button"
                       onClick={() => {
