@@ -10,7 +10,8 @@ export interface Family {
   gender: string;
   qualification?: string;
   healthStatus?: string;
-  title: string;
+  title: string;        // اللقب الأساسي (العمود I)
+  subTitle?: string;     // اللقب الفرعي (حقل مستقل)
   maritalStatus: string;
   birthDate: string;
   deathDate: string;
@@ -21,7 +22,8 @@ export interface Family {
 export interface Dependent {
   id: number;
   name: string;
-  title: string;
+  title: string;        // اللقب الأساسي (العمود I)
+  subTitle?: string;     // اللقب الفرعي (حقل مستقل)
   relation: string;
   gender?: string;
   qualification?: string;

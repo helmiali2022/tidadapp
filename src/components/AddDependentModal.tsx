@@ -1,6 +1,6 @@
 import { useState, useEffect, FormEvent } from "react";
 import { X, UserPlus, Calendar, Info, AlertCircle, GraduationCap, HeartPulse } from "lucide-react";
-import { TITLES, RELATIONS, MARITAL_STATUSES, QUALIFICATIONS, HEALTH_STATUSES } from "../data";
+import { TITLES, RELATIONS, MARITAL_STATUSES, QUALIFICATIONS, HEALTH_STATUSES, extractIndividualName } from "../data";
 import { Family, Dependent } from "../types";
 import SearchableSelect from "./SearchableSelect";
 
@@ -28,6 +28,7 @@ export default function AddDependentModal({
   const [selectedFamilyCode, setSelectedFamilyCode] = useState("");
   const [name, setName] = useState("");
   const [title, setTitle] = useState("بدون لقب");
+  const [subTitle, setSubTitle] = useState("");
   const [relation, setRelation] = useState("ابن");
   const [gender, setGender] = useState("ذكر");
   const [qualification, setQualification] = useState("أُمّي / بدون مؤهل");
@@ -50,6 +51,7 @@ export default function AddDependentModal({
           if (draft.selectedFamilyCode !== undefined) setSelectedFamilyCode(draft.selectedFamilyCode);
           if (draft.name !== undefined) setName(draft.name);
           if (draft.title !== undefined) setTitle(draft.title);
+          if (draft.subTitle !== undefined) setSubTitle(draft.subTitle);
           if (draft.relation !== undefined) setRelation(draft.relation);
           if (draft.gender !== undefined) setGender(draft.gender);
           if (draft.qualification !== undefined) setQualification(draft.qualification);
@@ -85,6 +87,7 @@ export default function AddDependentModal({
         const family = families.find(f => f.familyCode === codeToUse);
         if (family) {
           setTitle(family.title || "بدون لقب");
+          setSubTitle(family.subTitle || "");
         }
       }
     }
@@ -95,13 +98,13 @@ export default function AddDependentModal({
     if (isOpen) {
       if (name || phone || nationalId || birthDate || selectedFamilyCode) {
         const draftObj = {
-          selectedFamilyCode, name, title, relation, gender, qualification,
+          selectedFamilyCode, name, title, subTitle, relation, gender, qualification,
           healthStatus, phone, secondaryPhone, nationalId, birthDate, maritalStatus
         };
         localStorage.setItem("census_draft_dependent", JSON.stringify(draftObj));
       }
     }
-  }, [isOpen, selectedFamilyCode, name, title, relation, gender, qualification, healthStatus, phone, secondaryPhone, nationalId, birthDate, maritalStatus]);
+  }, [isOpen, selectedFamilyCode, name, title, subTitle, relation, gender, qualification, healthStatus, phone, secondaryPhone, nationalId, birthDate, maritalStatus]);
 
   const handleClearDraft = () => {
     localStorage.removeItem("census_draft_dependent");
@@ -109,6 +112,7 @@ export default function AddDependentModal({
     setSelectedFamilyCode(codeToUse);
     setName("");
     setTitle("بدون لقب");
+    setSubTitle("");
     setRelation("ابن");
     setGender("ذكر");
     setQualification("أُمّي / بدون مؤهل");
@@ -127,6 +131,7 @@ export default function AddDependentModal({
       const family = families.find(f => f.familyCode === selectedFamilyCode);
       if (family) {
         setTitle(family.title || "بدون لقب");
+        setSubTitle(family.subTitle || "");
       }
     }
   }, [selectedFamilyCode, families]);
@@ -135,29 +140,28 @@ export default function AddDependentModal({
 
   const selectedFamily = families.find(f => f.familyCode === selectedFamilyCode);
 
-  // Validations
-  const trimmedName = name.trim();
-  const depWords = trimmedName.split(/\s+/).filter(Boolean);
-  const isNameHasSpace = name.includes(" ") || depWords.length > 1;
+  // Validations & Clean individual name
+  const rawTrimmedName = name.trim();
+  const cleanedName = extractIndividualName(rawTrimmedName, selectedFamily?.headName, selectedFamily?.title || title);
 
   // Duplicate check within selected family
   let isDuplicateName = false;
-  if (selectedFamilyCode && trimmedName !== "") {
+  if (selectedFamilyCode && cleanedName !== "") {
     if (selectedFamily && selectedFamily.headName) {
       const headWords = selectedFamily.headName.trim().split(/\s+/).filter(Boolean);
-      if (headWords[0] && headWords[0].toLowerCase() === trimmedName.toLowerCase()) {
+      if (headWords[0] && headWords[0].toLowerCase() === cleanedName.toLowerCase()) {
         isDuplicateName = true;
       }
     }
     if (!isDuplicateName && dependents && dependents.length > 0) {
       const familyDeps = dependents.filter(d => d.familyCode === selectedFamilyCode);
-      if (familyDeps.some(d => d.name && d.name.trim().toLowerCase() === trimmedName.toLowerCase())) {
+      if (familyDeps.some(d => d.name && extractIndividualName(d.name, selectedFamily?.headName, selectedFamily?.title).toLowerCase() === cleanedName.toLowerCase())) {
         isDuplicateName = true;
       }
     }
   }
 
-  const isFormInvalid = !selectedFamilyCode || !trimmedName || isNameHasSpace || isDuplicateName || !birthDate;
+  const isFormInvalid = !selectedFamilyCode || !rawTrimmedName || isDuplicateName || !birthDate;
 
   // Map families for the searchable combobox
   const familyOptions = families.map((f) => ({
@@ -173,8 +177,9 @@ export default function AddDependentModal({
     const residency = selectedFamily ? selectedFamily.residency : "غير محدد";
 
     const payload = {
-      name,
-      title,
+      name: cleanedName,
+      title, // اللقب الأساسي (العمود I)
+      subTitle, // اللقب الفرعي
       relation,
       gender,
       qualification,
@@ -266,18 +271,12 @@ export default function AddDependentModal({
                 onChange={(e) => setName(e.target.value)}
                 placeholder="مثال: حلمي"
                 className={`w-full px-3 py-2 text-sm border rounded-lg outline-none transition ${
-                  isNameHasSpace || isDuplicateName
+                  isDuplicateName
                     ? "border-rose-500 bg-rose-50/50 text-rose-900 focus:ring-2 focus:ring-rose-500"
                     : "border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
                 }`}
               />
-              {isNameHasSpace && (
-                <p className="text-[11px] font-bold text-rose-600 flex items-center gap-1 mt-0.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>⚠️ يُسمح بكتابة الاسم الأول فقط للتابع (كلمة واحدة بدون مسافات)</span>
-                </p>
-              )}
-              {!isNameHasSpace && isDuplicateName && (
+              {isDuplicateName && (
                 <p className="text-[11px] font-bold text-rose-600 flex items-center gap-1 mt-0.5">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>⚠️ هذا الاسم مستخدم سابقاً داخل نفس العائلة!</span>
@@ -378,7 +377,13 @@ export default function AddDependentModal({
               <label className="text-xs font-semibold text-slate-600">الحالة الاجتماعية</label>
               <select
                 value={maritalStatus}
-                onChange={(e) => setMaritalStatus(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setMaritalStatus(val);
+                  if (val.includes("متوفي") || val.includes("متوفى")) {
+                    setHealthStatus("متوفى");
+                  }
+                }}
                 className="w-full px-3 py-2 text-sm border border-slate-200 focus:ring-1 focus:ring-blue-500 bg-white"
               >
                 {maritalStatuses.map((status, idx) => (

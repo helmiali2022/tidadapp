@@ -2,6 +2,8 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
+import { EXCEL_TITLE_MAPPINGS, ALL_UNIQUE_EXCEL_TITLES, getExcelTitleForHeadName } from "./src/excelTitles";
+import { extractIndividualName } from "./src/data";
 
 interface Family {
   id: number;
@@ -211,6 +213,11 @@ function parseSheetFamilies(sheetFamilies: any[]): Family[] {
       const paddedNum = String(idx + 1).padStart(3, '0');
       f.familyCode = `FAM-${paddedNum}`;
     }
+    // Apply official Excel title matching
+    const excelTitle = getExcelTitleForHeadName(f.headName);
+    if (excelTitle) {
+      f.title = excelTitle;
+    }
   });
 
   return validFamilies;
@@ -315,7 +322,7 @@ function loadDB(): DBStructure {
           "شارع القحيفة", "عبدان", "هوب المبرك", "خارج القرية"
         ],
         titles: ["الخطيب", "الغرافي", "الجعفري", "المجيدي", "بدون لقب"],
-        maritalStatuses: ["أعزب", "متزوج", "أرمل", "مطلّق"],
+        maritalStatuses: ["أعزب", "متزوج", "أرمل", "مطلّق", "متوفي / متوفاة"],
         healthStatuses: ["سليم", "يعاني من مرض مزمن", "احتياجات خاصة"]
       };
       fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), "utf8");
@@ -356,15 +363,32 @@ function loadDB(): DBStructure {
       parsed.resetRequests = [];
     }
 
-    // Initialize schema lists if missing
+    // Initialize schema lists if missing & merge Excel titles
     if (!parsed.neighborhoods) parsed.neighborhoods = [
       "الأكمة", "البقير", "الدمنة", "الرميمية", "الزيلة", "الصفا", "العنين", "القحفة",
       "المجزع", "المعقرة", "الهقم", "براشة", "جحابر", "دار عبيد", "ذيك الشعب", "زعمة",
       "شارع القحيفة", "عبدان", "هوب المبرك", "خارج القرية"
     ];
-    if (!parsed.titles) parsed.titles = ["الخطيب", "الغرافي", "الجعفري", "المجيدي", "بدون لقب"];
-    if (!parsed.maritalStatuses) parsed.maritalStatuses = ["أعزب", "متزوج", "أرمل", "مطلّق"];
+
+    const currentTitlesSet = new Set<string>([...(parsed.titles || []), ...ALL_UNIQUE_EXCEL_TITLES]);
+    parsed.titles = Array.from(currentTitlesSet);
+
+    if (!parsed.maritalStatuses) {
+      parsed.maritalStatuses = ["أعزب", "متزوج", "أرمل", "مطلّق", "متوفي / متوفاة"];
+    } else if (!parsed.maritalStatuses.includes("متوفي / متوفاة")) {
+      parsed.maritalStatuses.push("متوفي / متوفاة");
+    }
     if (!parsed.healthStatuses) parsed.healthStatuses = ["سليم", "يعاني من مرض مزمن", "احتياجات خاصة"];
+
+    // Auto-align family titles in database file with official Excel dataset
+    if (Array.isArray(parsed.families)) {
+      parsed.families.forEach((fam: Family) => {
+        const matchedTitle = getExcelTitleForHeadName(fam.headName);
+        if (matchedTitle) {
+          fam.title = matchedTitle;
+        }
+      });
+    }
 
     fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 2), "utf8");
     return parsed;
@@ -381,7 +405,7 @@ function loadDB(): DBStructure {
         "شارع القحيفة", "عبدان", "هوب المبرك", "خارج القرية"
       ],
       titles: ["الخطيب", "الغرافي", "الجعفري", "المجيدي", "بدون لقب"],
-      maritalStatuses: ["أعزب", "متزوج", "أرمل", "مطلّق"],
+      maritalStatuses: ["أعزب", "متزوج", "أرمل", "مطلّق", "متوفي / متوفاة"],
       healthStatuses: ["سليم", "يعاني من مرض مزمن", "احتياجات خاصة"]
     };
   }
@@ -873,6 +897,106 @@ async function startServer() {
     res.json({ status: "success", message: "تم تحديث القوائم بنجاح" });
   });
 
+  // 1k. Bulk Sync Surnames & Family Titles from Google Sheet
+  app.post("/api/sync-titles", async (req, res) => {
+    try {
+      const db = loadDB();
+      const scriptUrl = req.body.googleScriptUrl || db.googleScriptUrl || DEFAULT_SCRIPT_URL;
+
+      let sheetFams: any[] = [];
+      let sheetDeps: any[] = [];
+
+      if (scriptUrl) {
+        try {
+          const pullUrl = scriptUrl + (scriptUrl.includes("?") ? "&" : "?") + "action=pull";
+          const fetchResp = await fetch(pullUrl);
+          if (fetchResp.ok) {
+            const json = await fetchResp.json();
+            if (json) {
+              sheetFams = json.families || [];
+              sheetDeps = json.dependents || [];
+            }
+          }
+        } catch (e) {
+          console.warn("Could not fetch Google Script in /api/sync-titles, using local DB:", e);
+        }
+      }
+
+      const titlesSet = new Set<string>(db.titles || ["الخطيب", "الغرافي", "الجعفري", "المجيدي", "بدون لقب"]);
+
+      // Process Sheet & Local Families
+      const allFamilies = [...db.families, ...sheetFams];
+      allFamilies.forEach((f: any) => {
+        const title = cleanString(f.title || f["اللقب"]);
+        if (title && title !== "بدون لقب" && title.length >= 2) {
+          titlesSet.add(title);
+        }
+
+        const headName = cleanString(f.headName || f["رب الأسرة"]);
+        if (headName) {
+          const parts = headName.split(/\s+/);
+          if (parts.length >= 2) {
+            const surname = parts[parts.length - 1];
+            if (surname.startsWith("ال") && surname.length >= 4) {
+              titlesSet.add(surname);
+            }
+          }
+        }
+      });
+
+      // Process Sheet & Local Dependents
+      const allDependents = [...db.dependents, ...sheetDeps];
+      allDependents.forEach((d: any) => {
+        const title = cleanString(d.title || d["اللقب"]);
+        if (title && title !== "بدون لقب" && title.length >= 2) {
+          titlesSet.add(title);
+        }
+      });
+
+      // Add all Excel titles
+      ALL_UNIQUE_EXCEL_TITLES.forEach(t => titlesSet.add(t));
+
+      const updatedTitles = Array.from(titlesSet).filter(Boolean);
+      if (!updatedTitles.includes("بدون لقب")) {
+        updatedTitles.push("بدون لقب");
+      }
+
+      // Apply Excel titles to local DB families
+      let matchedCount = 0;
+      db.families.forEach((fam: Family) => {
+        const officialTitle = getExcelTitleForHeadName(fam.headName);
+        if (officialTitle) {
+          fam.title = officialTitle;
+          matchedCount++;
+        }
+      });
+
+      // Synchronize dependents titles based on updated family titles
+      const familyCodeToTitleMap = new Map<string, string>();
+      db.families.forEach(f => {
+        if (f.familyCode && f.title) familyCodeToTitleMap.set(f.familyCode, f.title);
+      });
+
+      db.dependents.forEach((dep: Dependent) => {
+        if (dep.familyCode && familyCodeToTitleMap.has(dep.familyCode)) {
+          dep.title = familyCodeToTitleMap.get(dep.familyCode)!;
+        }
+      });
+
+      db.titles = updatedTitles;
+      saveDB(db);
+
+      res.json({
+        status: "success",
+        titles: db.titles,
+        matchedFamilies: matchedCount,
+        message: `تم جلب ومزامنة ${updatedTitles.length} لقباً ومطابقة ألقاب الأسر بنجاح`
+      });
+    } catch (err: any) {
+      res.status(500).json({ status: "error", message: err.message || "حدث خطأ أثناء مزامنة الألقاب" });
+    }
+  });
+
   // 2. Save Google Apps Script web app URL
   app.post("/api/config", (req, res) => {
     const { googleScriptUrl } = req.body;
@@ -1015,6 +1139,7 @@ async function startServer() {
     const db = loadDB();
     
     const hostFam = db.families.find(f => f.familyCode === depData.familyCode);
+    const cleanedName = extractIndividualName(depData.name, hostFam?.headName, hostFam?.title || depData.title);
 
     // Auto-inheritance for Title and Residency from head of family if empty
     let effectiveTitle = depData.title;
@@ -1030,6 +1155,7 @@ async function startServer() {
     const nextId = db.dependents.length > 0 ? Math.max(...db.dependents.map(d => d.id)) + 1 : 1;
     const newDependent: Dependent = {
       ...depData,
+      name: cleanedName,
       title: effectiveTitle,
       residency: effectiveResidency,
       id: nextId
@@ -1141,9 +1267,15 @@ async function startServer() {
       }
     }
 
+    let cleanedName = updatedFields.name !== undefined ? updatedFields.name : db.dependents[index].name;
+    if (cleanedName) {
+      cleanedName = extractIndividualName(cleanedName, hostFam?.headName, hostFam?.title || effectiveTitle);
+    }
+
     db.dependents[index] = {
       ...db.dependents[index],
       ...updatedFields,
+      name: cleanedName,
       title: effectiveTitle,
       residency: effectiveResidency,
       id

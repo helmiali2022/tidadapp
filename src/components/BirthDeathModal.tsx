@@ -1,7 +1,7 @@
 import { useState, useEffect, FormEvent } from "react";
 import { X, Sparkles, HeartCrack, Baby, Calendar, AlertTriangle, Info } from "lucide-react";
 import { Family, Dependent } from "../types";
-import { TITLES } from "../data";
+import { TITLES, extractIndividualName } from "../data";
 import SearchableSelect from "./SearchableSelect";
 
 interface BirthDeathModalProps {
@@ -124,7 +124,7 @@ export default function BirthDeathModal({
     const residency = parentFamily ? parentFamily.residency : "العنين";
 
     const birthPayload = {
-      name: babyName,
+      name: extractIndividualName(babyName, parentFamily?.headName, parentFamily?.title || babyTitle),
       title: babyTitle,
       relation: babyGender === "ذكر" ? "ابن" : "ابنة",
       nationalId: babyNationalId,
@@ -235,18 +235,8 @@ export default function BirthDeathModal({
                     value={babyName}
                     onChange={(e) => setBabyName(e.target.value)}
                     placeholder="مثال: حلمي"
-                    className={`w-full px-3 py-2 text-sm border rounded-lg outline-none transition ${
-                      isBabyNameHasSpace
-                        ? "border-rose-500 bg-rose-50/50 text-rose-900 focus:ring-2 focus:ring-rose-500"
-                        : "border-slate-200 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 bg-white"
-                    }`}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 bg-white transition"
                   />
-                  {isBabyNameHasSpace && (
-                    <p className="text-[11px] font-bold text-rose-600 flex items-center gap-1 mt-0.5">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                      <span>⚠️ يُسمح بكتابة الاسم الأول فقط للتابع (كلمة واحدة بدون مسافات)</span>
-                    </p>
-                  )}
                 </div>
 
                 {/* اللقب */}

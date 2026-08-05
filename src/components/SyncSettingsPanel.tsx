@@ -1,11 +1,12 @@
 import { useState, useEffect, FormEvent } from "react";
-import { Cloud, CloudDownload, CloudUpload, Copy, Check, Info, FileText, Settings, Link, CheckCircle2, AlertCircle, Download, ShieldCheck, FileJson } from "lucide-react";
+import { Cloud, CloudDownload, CloudUpload, Copy, Check, Info, FileText, Settings, Link, CheckCircle2, AlertCircle, Download, ShieldCheck, FileJson, Sparkles, Tag } from "lucide-react";
 import { Family, Dependent } from "../types";
 
 interface SyncSettingsPanelProps {
   googleScriptUrl: string;
   onSaveUrl: (url: string) => Promise<void>;
   onSync: (action: "pull" | "push") => Promise<void>;
+  onSyncTitles?: () => Promise<void>;
   syncLog: string[];
   familiesCount: number;
   dependentsCount: number;
@@ -18,6 +19,7 @@ export default function SyncSettingsPanel({
   googleScriptUrl,
   onSaveUrl,
   onSync,
+  onSyncTitles,
   syncLog,
   familiesCount,
   dependentsCount,
@@ -58,6 +60,22 @@ export default function SyncSettingsPanel({
       await onSync(action);
     } catch (err: any) {
       alert(`فشلت المزامنة: ${err.message || "خطأ غير معروف"}`);
+    } finally {
+      setIsSyncing(null);
+    }
+  };
+
+  const handleSyncTitlesAction = async () => {
+    if (!googleScriptUrl) {
+      alert("يرجى تهيئة رابط Google Apps Script أولاً لتمكين مزامنة الألقاب من سحابة جداول جوجل.");
+      return;
+    }
+    if (!onSyncTitles) return;
+    setIsSyncing("titles");
+    try {
+      await onSyncTitles();
+    } catch (err: any) {
+      alert(`فشلت مزامنة الألقاب: ${err.message || "خطأ غير معروف"}`);
     } finally {
       setIsSyncing(null);
     }
@@ -515,6 +533,40 @@ function deleteDependentRow(sheetDependents, dependentIdentifier, familyCode) {
               <span className="text-[10px] text-emerald-700 mt-1 opacity-80">رفع كافة الأسر والتابعين المحليين المسجلين وحفظهم في جدول جوجل السحابي</span>
             </button>
           </div>
+
+          {/* Sync Surnames & Titles Card */}
+          {onSyncTitles && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleSyncTitlesAction}
+                disabled={isSyncing !== null || !googleScriptUrl}
+                className={`w-full p-4 border rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-right transition select-none ${
+                  googleScriptUrl 
+                    ? "bg-purple-50/70 hover:bg-purple-100/80 border-purple-200 text-purple-950 cursor-pointer shadow-2xs" 
+                    : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-purple-600 text-white rounded-xl shadow-xs shrink-0">
+                    <Tag className={`w-5 h-5 ${isSyncing === "titles" ? "animate-spin" : ""}`} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-purple-950">جلب ومزامنة الألقاب وأسماء الأسر من جوجل</span>
+                      <span className="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full font-bold">تحديث الألقاب دفعة واحدة</span>
+                    </div>
+                    <p className="text-[11px] text-purple-800/80 leading-relaxed mt-0.5">
+                      استخراج كافة ألقاب العائلات وأسماء الأسر المكتشفة في جدول جوجل وتحديث خيارات القوائم المنسدلة بالنظام فوراً
+                    </p>
+                  </div>
+                </div>
+                <span className="w-full sm:w-auto px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shrink-0 text-center transition">
+                  {isSyncing === "titles" ? "جاري الاستخراج..." : "مزامنة الألقاب الآن"}
+                </span>
+              </button>
+            </div>
+          )}
 
           {/* Local Backup Section */}
           <div className="pt-4 border-t border-slate-100">

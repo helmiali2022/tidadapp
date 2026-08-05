@@ -1,6 +1,6 @@
 import { useState, useEffect, FormEvent } from "react";
 import { X, Plus, Trash2, Calendar, UserPlus, Home, Info, AlertCircle, Sparkles, GraduationCap, HeartPulse } from "lucide-react";
-import { NEIGHBORHOODS, TITLES, GOVERNORATES, GOVERNORATES_WITH_CUSTOM, MARITAL_STATUSES, RELATIONS, QUALIFICATIONS, HEALTH_STATUSES } from "../data";
+import { NEIGHBORHOODS, TITLES, GOVERNORATES, GOVERNORATES_WITH_CUSTOM, MARITAL_STATUSES, RELATIONS, QUALIFICATIONS, HEALTH_STATUSES, extractIndividualName } from "../data";
 import { Family, Dependent } from "../types";
 import SearchableSelect from "./SearchableSelect";
 
@@ -26,6 +26,7 @@ export default function AddFamilyModal({
   // Family head form states
   const [headName, setHeadName] = useState("");
   const [title, setTitle] = useState("بدون لقب");
+  const [subTitle, setSubTitle] = useState("");
   const [neighborhood, setNeighborhood] = useState("");
   const [residency, setResidency] = useState("");
   const [governorate, setGovernorate] = useState("صنعاء");
@@ -58,6 +59,7 @@ export default function AddFamilyModal({
           const draft = JSON.parse(savedDraftStr);
           if (draft.headName !== undefined) setHeadName(draft.headName);
           if (draft.title !== undefined) setTitle(draft.title);
+          if (draft.subTitle !== undefined) setSubTitle(draft.subTitle);
           if (draft.neighborhood !== undefined) setNeighborhood(draft.neighborhood);
           if (draft.residency !== undefined) setResidency(draft.residency);
           if (draft.governorate !== undefined) setGovernorate(draft.governorate);
@@ -82,6 +84,7 @@ export default function AddFamilyModal({
 
       setHeadName("");
       setTitle("بدون لقب");
+      setSubTitle("");
       setNeighborhood("");
       setResidency("");
       setGovernorate("صنعاء");
@@ -106,19 +109,20 @@ export default function AddFamilyModal({
     if (isOpen) {
       if (headName || phone || birthDate || dependents.length > 0 || neighborhood) {
         const draftObj = {
-          headName, title, neighborhood, residency, governorate, outsideLocation,
+          headName, title, subTitle, neighborhood, residency, governorate, outsideLocation,
           isCustomLocation, phone, secondaryPhone, gender, qualification,
           healthStatus, maritalStatus, birthDate, marriageDate, deathDate, dependents
         };
         localStorage.setItem("census_draft_family", JSON.stringify(draftObj));
       }
     }
-  }, [isOpen, headName, title, neighborhood, residency, governorate, outsideLocation, isCustomLocation, phone, secondaryPhone, gender, qualification, healthStatus, maritalStatus, birthDate, marriageDate, deathDate, dependents]);
+  }, [isOpen, headName, title, subTitle, neighborhood, residency, governorate, outsideLocation, isCustomLocation, phone, secondaryPhone, gender, qualification, healthStatus, maritalStatus, birthDate, marriageDate, deathDate, dependents]);
 
   const handleClearDraft = () => {
     localStorage.removeItem("census_draft_family");
     setHeadName("");
     setTitle("بدون لقب");
+    setSubTitle("");
     setNeighborhood("");
     setResidency("");
     setGovernorate("صنعاء");
@@ -187,17 +191,15 @@ export default function AddFamilyModal({
   // Dependent validation checks
   const depValidations = dependents.map((dep, idx) => {
     const trimmed = dep.name.trim();
-    const words = trimmed.split(/\s+/).filter(Boolean);
-    const hasSpace = dep.name.includes(" ") || words.length > 1;
-    const isDuplicateWithHead = trimmed !== "" && headWords.length > 0 && trimmed.toLowerCase() === headWords[0].toLowerCase();
-    const isDuplicateWithOtherDep = trimmed !== "" && dependents.some((d, i) => i !== idx && d.name.trim().toLowerCase() === trimmed.toLowerCase());
+    const cleaned = extractIndividualName(trimmed, headName, dep.title || title);
+    const isDuplicateWithHead = cleaned !== "" && headWords.length > 0 && cleaned.toLowerCase() === headWords[0].toLowerCase();
+    const isDuplicateWithOtherDep = cleaned !== "" && dependents.some((d, i) => i !== idx && extractIndividualName(d.name, headName, d.title || title).toLowerCase() === cleaned.toLowerCase());
     return {
-      hasSpace,
       isDuplicate: isDuplicateWithHead || isDuplicateWithOtherDep
     };
   });
 
-  const hasAnyDepError = depValidations.some(v => v.hasSpace || v.isDuplicate);
+  const hasAnyDepError = depValidations.some(v => v.isDuplicate);
   const isFormInvalid = isHeadNameInvalid || hasAnyDepError;
 
   // Add a dependent row locally in the modal
@@ -230,7 +232,14 @@ export default function AddFamilyModal({
     setDependents(
       dependents.map((d) => {
         if (d.id === id) {
-          return { ...d, [field]: value };
+          const updated = { ...d, [field]: value };
+          if (field === "maritalStatus" && (value.includes("متوفي") || value.includes("متوفى"))) {
+            updated.healthStatus = "متوفى";
+          }
+          if (field === "healthStatus" && (value.includes("متوفى") || value.includes("متوفي"))) {
+            updated.maritalStatus = "متوفي / متوفاة";
+          }
+          return updated;
         }
         return d;
       })
@@ -278,7 +287,8 @@ export default function AddFamilyModal({
       gender,
       qualification,
       healthStatus: healthStatus || "سليم / جيدة",
-      title,
+      title, // اللقب الأساسي (العمود I)
+      subTitle, // اللقب الفرعي
       maritalStatus,
       birthDate,
       deathDate,
@@ -288,8 +298,9 @@ export default function AddFamilyModal({
 
     // Prepare dependents payload
     const dependentsPayload = dependents.map((d) => ({
-      name: d.name,
-      title: d.title,
+      name: extractIndividualName(d.name, headName, d.title || title),
+      title: d.title || title,
+      subTitle: d.subTitle || subTitle || "",
       relation: d.relation,
       gender: d.gender || "ذكر",
       qualification: d.qualification || "أُمّي / بدون مؤهل",
@@ -386,14 +397,26 @@ export default function AddFamilyModal({
                 )}
               </div>
 
-              {/* اللقب */}
+              {/* اللقب الأساسي (العمود I) */}
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-slate-600">اللقب المعتمد *</label>
+                <label className="text-xs font-semibold text-slate-600">اللقب الأساسي (العمود I) *</label>
                 <SearchableSelect
                   options={titles}
                   value={title}
                   onChange={setTitle}
                   placeholder="الخطيب"
+                />
+              </div>
+
+              {/* اللقب الفرعي / الشهرة */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-600">اللقب الفرعي / الشهرة (اختياري)</label>
+                <input
+                  type="text"
+                  value={subTitle}
+                  onChange={(e) => setSubTitle(e.target.value)}
+                  placeholder="مثال: حاجب، عثمان..."
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 bg-white"
                 />
               </div>
 
@@ -541,7 +564,13 @@ export default function AddFamilyModal({
                 <label className="text-xs font-semibold text-slate-600">الحالة الاجتماعية *</label>
                 <select
                   value={maritalStatus}
-                  onChange={(e) => setMaritalStatus(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setMaritalStatus(val);
+                    if (val.includes("متوفي") || val.includes("متوفى")) {
+                      setHealthStatus("متوفى");
+                    }
+                  }}
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 bg-white"
                 >
                   {maritalStatuses.map((status, idx) => (
@@ -652,18 +681,12 @@ export default function AddFamilyModal({
                             onChange={(e) => updateDependentRow(dep.id, "name", e.target.value)}
                             placeholder="حلمي"
                             className={`px-2.5 py-1.5 text-xs border rounded-md outline-none bg-white transition ${
-                              val.hasSpace || val.isDuplicate
+                              val.isDuplicate
                                 ? "border-rose-500 bg-rose-50/50 text-rose-900 focus:ring-1 focus:ring-rose-500"
                                 : "border-slate-200 focus:border-emerald-500"
                             }`}
                           />
-                          {val.hasSpace && (
-                            <p className="text-[10px] font-bold text-rose-600 flex items-center gap-1 mt-0.5">
-                              <AlertCircle className="w-3 h-3 shrink-0" />
-                              <span>⚠️ يُسمح بكتابة الاسم الأول فقط للتابع (كلمة واحدة بدون مسافات)</span>
-                            </p>
-                          )}
-                          {!val.hasSpace && val.isDuplicate && (
+                          {val.isDuplicate && (
                             <p className="text-[10px] font-bold text-rose-600 flex items-center gap-1 mt-0.5">
                               <AlertCircle className="w-3 h-3 shrink-0" />
                               <span>⚠️ هذا الاسم مستخدم سابقاً داخل نفس العائلة!</span>

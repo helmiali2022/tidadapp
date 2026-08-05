@@ -77,7 +77,8 @@ export const MARITAL_STATUSES = [
   "أعزب",
   "متزوج",
   "أرمل",
-  "مطلّق"
+  "مطلّق",
+  "متوفي / متوفاة"
 ];
 
 export const QUALIFICATIONS = [
@@ -108,49 +109,94 @@ export const GOVERNORATES_WITH_CUSTOM = [
   "إضافة مكان إقامة جديد (كتابة يدوية)"
 ];
 
-export function formatDependentFullName(dep: { name: string; title?: string; relation?: string }, family?: { headName: string; title?: string }): string {
-  if (!dep || !dep.name) return "";
-  const nameTrimmed = dep.name.trim();
+export function extractIndividualName(depName: string, familyHeadName?: string, familyTitle?: string): string {
+  if (!depName) return "";
+  let clean = depName.trim();
+  if (!clean) return "";
 
-  // If dep.name starts with "تابع " (placeholder name)
-  if (nameTrimmed.startsWith("تابع ")) {
-    return nameTrimmed;
-  }
+  if (!familyHeadName) return clean;
 
-  if (!family) {
-    const title = dep.title && dep.title !== "بدون لقب" ? ` ${dep.title}` : "";
-    return `${nameTrimmed}${title}`.trim();
-  }
+  const titleToUse = (familyTitle && familyTitle !== "بدون لقب") ? familyTitle.trim() : "";
+  let headClean = familyHeadName.trim();
 
-  const titleToUse = (family.title && family.title !== "بدون لقب")
-    ? family.title
-    : ((dep.title && dep.title !== "بدون لقب") ? dep.title : "");
-
-  let headClean = (family.headName || "").trim();
   if (titleToUse && headClean.endsWith(titleToUse)) {
     headClean = headClean.slice(0, headClean.length - titleToUse.length).trim();
   }
 
-  // If dep.name is identical to headName or headClean
-  if (nameTrimmed === headClean || nameTrimmed === family.headName.trim()) {
-    return titleToUse && !nameTrimmed.includes(titleToUse) ? `${nameTrimmed} ${titleToUse}`.trim() : nameTrimmed;
+  // If clean includes headClean, strip headClean
+  if (headClean && clean.includes(headClean)) {
+    clean = clean.replace(headClean, "").trim();
   }
 
-  // If dependent name already has 3 or more words or already includes headClean
-  const words = nameTrimmed.split(/\s+/).filter(Boolean);
-  if (words.length >= 3 || (headClean && nameTrimmed.includes(headClean))) {
-    if (titleToUse && !nameTrimmed.includes(titleToUse)) {
-      return `${nameTrimmed} ${titleToUse}`.trim();
-    }
-    return nameTrimmed;
+  // If clean includes full familyHeadName, strip it
+  if (familyHeadName && clean.includes(familyHeadName.trim())) {
+    clean = clean.replace(familyHeadName.trim(), "").trim();
+  }
+
+  // If clean includes titleToUse, strip titleToUse
+  if (titleToUse && clean.includes(titleToUse)) {
+    const titleRegex = new RegExp(`\\b${titleToUse.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g');
+    clean = clean.replace(titleRegex, "").trim();
+  }
+
+  // Clean up remaining spaces
+  clean = clean.replace(/\s+/g, " ").trim();
+
+  return clean || depName.trim();
+}
+
+export function formatDependentFullName(dep: { name: string; title?: string; relation?: string }, family?: { headName: string; title?: string }): string {
+  if (!dep || !dep.name) return "";
+  
+  const indivName = extractIndividualName(
+    dep.name,
+    family?.headName,
+    family?.title || dep.title
+  );
+
+  if (!family || !family.headName) {
+    const title = dep.title && dep.title !== "بدون لقب" ? ` ${dep.title}` : "";
+    return `${indivName}${title}`.trim();
+  }
+
+  const titleToUse = (family.title && family.title !== "بدون لقب")
+    ? family.title.trim()
+    : ((dep.title && dep.title !== "بدون لقب") ? dep.title.trim() : "");
+
+  let headClean = family.headName.trim();
+  if (titleToUse && headClean.endsWith(titleToUse)) {
+    headClean = headClean.slice(0, headClean.length - titleToUse.length).trim();
   }
 
   const titleSuffix = titleToUse ? ` ${titleToUse}` : "";
 
-  if (dep.relation === "زوجة") {
-    return `${nameTrimmed} (زوجة ${headClean})${titleSuffix}`.trim();
-  }
+  return `${indivName} ${headClean}${titleSuffix}`.replace(/\s+/g, " ").trim();
+}
 
-  return `${nameTrimmed} ${headClean}${titleSuffix}`.trim();
+export function isDeceasedStatus(status?: string, deathDate?: string, maritalStatus?: string): boolean {
+  if (deathDate && String(deathDate).trim() !== "") return true;
+
+  const checkVal = (val?: string) => {
+    if (!val) return false;
+    const s = String(val).trim().toLowerCase();
+    return s === "متوفى" || s === "متوفاة" || s === "متوفي" || s === "متوفية" || s === "متوفي / متوفاة" || s.includes("متوف");
+  };
+
+  return checkVal(status) || checkVal(maritalStatus);
+}
+
+export function isRecentBirthDate(birthDate?: string): boolean {
+  if (!birthDate) return false;
+  const str = String(birthDate).trim();
+  let age: number | null = null;
+  if (str.length === 4 && !isNaN(Number(str))) {
+    age = new Date().getFullYear() - Number(str);
+  } else {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      age = new Date().getFullYear() - d.getFullYear();
+    }
+  }
+  return age !== null && age <= 2;
 }
 

@@ -9,8 +9,9 @@ import {
   ChevronLeft, ChevronRight
 } from "lucide-react";
 import { Family, Dependent, User, Role, UserPermissions, PasswordResetRequest } from "./types";
-import { NEIGHBORHOODS, VALID_NEIGHBORHOODS, TITLES, GOVERNORATES, MARITAL_STATUSES, RELATIONS, QUALIFICATIONS, HEALTH_STATUSES, GOVERNORATES_WITH_CUSTOM, formatDependentFullName } from "./data";
+import { NEIGHBORHOODS, VALID_NEIGHBORHOODS, TITLES, GOVERNORATES, MARITAL_STATUSES, RELATIONS, QUALIFICATIONS, HEALTH_STATUSES, GOVERNORATES_WITH_CUSTOM, formatDependentFullName, extractIndividualName, isDeceasedStatus, isRecentBirthDate } from "./data";
 import { DEFAULT_GOOGLE_SCRIPT_URL, DEFAULT_LOCAL_USERS } from "./constants";
+import { EXCEL_TITLE_MAPPINGS, ALL_UNIQUE_EXCEL_TITLES, getExcelTitleForHeadName } from "./excelTitles";
 
 const cleanString = (str: any): string => {
   if (str === null || str === undefined) return "";
@@ -115,7 +116,7 @@ export default function App() {
   // Schema management states
   const [schemaNeighborhoods, setSchemaNeighborhoods] = useState<string[]>([]);
   const [schemaTitles, setSchemaTitles] = useState<string[]>([]);
-  const [schemaMaritalStatuses, setSchemaMaritalStatuses] = useState<string[]>([]);
+  const [schemaMaritalStatuses, setSchemaMaritalStatuses] = useState<string[]>(MARITAL_STATUSES);
   const [schemaHealthStatuses, setSchemaHealthStatuses] = useState<string[]>([]);
   const [isUpdatingSchema, setIsUpdatingSchema] = useState(false);
 
@@ -168,10 +169,26 @@ export default function App() {
   const [familyHoodFilter, setFamilyHoodFilter] = useState("");
   const [dependentSearch, setDependentSearch] = useState("");
 
-  // Extended Search Dropdowns (Health, Age, Marital)
+  // Extended Search Dropdowns (Health, Age, Marital, Title, Vital, Qualification)
   const [healthFilter, setHealthFilter] = useState("");
   const [ageFilter, setAgeFilter] = useState("");
   const [maritalFilter, setMaritalFilter] = useState("");
+  const [titleFilter, setTitleFilter] = useState("");
+  const [vitalFilter, setVitalFilter] = useState("");
+  const [qualificationFilter, setQualificationFilter] = useState("");
+
+  // Dynamically collected list of unique titles across schema, constants, families, and dependents
+  const availableTitles = useMemo(() => {
+    const set = new Set<string>(schemaTitles);
+    TITLES.forEach((t) => set.add(t));
+    families.forEach((f) => {
+      if (f.title && f.title.trim() && f.title !== "بدون لقب") set.add(f.title.trim());
+    });
+    dependents.forEach((d) => {
+      if (d.title && d.title.trim() && d.title !== "بدون لقب") set.add(d.title.trim());
+    });
+    return Array.from(set).filter(Boolean).sort();
+  }, [schemaTitles, families, dependents]);
 
   const getAgeFromBirthDate = (birthDate?: string): number | null => {
     if (!birthDate) return null;
@@ -208,91 +225,161 @@ export default function App() {
     return status.toLowerCase().includes(filter.toLowerCase());
   };
 
-  const matchesMaritalFilter = (status: string | undefined, filter: string): boolean => {
+  const matchesMaritalFilter = (status: string | undefined, filter: string, deathDate?: string): boolean => {
     if (!filter) return true;
+    if (filter === "متوفى" || filter === "متوفاة" || filter === "متوفي") {
+      return isDeceasedStatus(status, deathDate);
+    }
     if (!status) return false;
     return status.toLowerCase().includes(filter.toLowerCase());
   };
 
-  const renderExtendedSearchDropdowns = () => (
-    <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 text-xs select-none w-full">
-      {/* Health Status Filter */}
-      <div className="relative flex-1 min-w-[125px]">
-        <select
-          value={healthFilter}
-          onChange={(e) => setHealthFilter(e.target.value)}
-          className={`w-full py-1.5 px-2.5 rounded-lg border text-xs font-bold outline-none transition cursor-pointer ${
-            healthFilter 
-              ? "bg-rose-600 text-white border-rose-600 shadow-xs" 
-              : "bg-rose-50/90 text-rose-800 border-rose-200 hover:bg-rose-100 focus:ring-2 focus:ring-rose-400"
-          }`}
-        >
-          <option value="" className="bg-white text-slate-800 font-normal">🏥 الصحة: الكل</option>
-          <option value="سليم / جيدة" className="bg-white text-slate-800 font-normal">سليم / جيدة</option>
-          <option value="مرض مزمن" className="bg-white text-slate-800 font-normal">مرض مزمن</option>
-          <option value="إعاقة حركية" className="bg-white text-slate-800 font-normal">إعاقة حركية</option>
-          <option value="إعاقة بصرية" className="bg-white text-slate-800 font-normal">إعاقة بصرية</option>
-          <option value="إعاقة ذهنية" className="bg-white text-slate-800 font-normal">إعاقة ذهنية</option>
-          <option value="حالة أخرى" className="bg-white text-slate-800 font-normal">حالة أخرى</option>
-        </select>
-      </div>
+  const renderExtendedSearchDropdowns = () => {
+    const hasActiveFilters = Boolean(
+      healthFilter || ageFilter || maritalFilter || titleFilter || vitalFilter || qualificationFilter
+    );
 
-      {/* Age Category Filter */}
-      <div className="relative flex-1 min-w-[125px]">
-        <select
-          value={ageFilter}
-          onChange={(e) => setAgeFilter(e.target.value)}
-          className={`w-full py-1.5 px-2.5 rounded-lg border text-xs font-bold outline-none transition cursor-pointer ${
-            ageFilter 
-              ? "bg-blue-600 text-white border-blue-600 shadow-xs" 
-              : "bg-blue-50/90 text-blue-800 border-blue-200 hover:bg-blue-100 focus:ring-2 focus:ring-blue-400"
-          }`}
-        >
-          <option value="" className="bg-white text-slate-800 font-normal">🎂 العمر: الكل</option>
-          <option value="child" className="bg-white text-slate-800 font-normal">أطفال (أقل من 18)</option>
-          <option value="youth" className="bg-white text-slate-800 font-normal">شباب (18 - 35)</option>
-          <option value="adult" className="bg-white text-slate-800 font-normal">بالغون (36 - 59)</option>
-          <option value="senior" className="bg-white text-slate-800 font-normal">كبار السن (60+)</option>
-        </select>
-      </div>
+    return (
+      <div className="flex flex-col gap-2 w-full text-xs select-none">
+        {/* الصف الأول: الصحة، العمر، الحالة الاجتماعية */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full">
+          {/* Health Status Filter */}
+          <div className="relative flex-1 min-w-[125px]">
+            <select
+              value={healthFilter}
+              onChange={(e) => setHealthFilter(e.target.value)}
+              className={`w-full py-1.5 px-2.5 rounded-lg border text-xs font-bold outline-none transition cursor-pointer ${
+                healthFilter 
+                  ? "bg-rose-600 text-white border-rose-600 shadow-xs" 
+                  : "bg-rose-50/90 text-rose-800 border-rose-200 hover:bg-rose-100 focus:ring-2 focus:ring-rose-400"
+              }`}
+            >
+              <option value="" className="bg-white text-slate-800 font-normal">🏥 الصحة: الكل</option>
+              {HEALTH_STATUSES.map((hs) => (
+                <option key={hs} value={hs} className="bg-white text-slate-800 font-normal">{hs}</option>
+              ))}
+            </select>
+          </div>
 
-      {/* Marital Status Filter */}
-      <div className="relative flex-1 min-w-[125px]">
-        <select
-          value={maritalFilter}
-          onChange={(e) => setMaritalFilter(e.target.value)}
-          className={`w-full py-1.5 px-2.5 rounded-lg border text-xs font-bold outline-none transition cursor-pointer ${
-            maritalFilter 
-              ? "bg-amber-600 text-white border-amber-600 shadow-xs" 
-              : "bg-amber-50/90 text-amber-800 border-amber-200 hover:bg-amber-100 focus:ring-2 focus:ring-amber-400"
-          }`}
-        >
-          <option value="" className="bg-white text-slate-800 font-normal">💍 الاجتماعية: الكل</option>
-          <option value="أعزب" className="bg-white text-slate-800 font-normal">أعزب / عازبة</option>
-          <option value="متزوج" className="bg-white text-slate-800 font-normal">متزوج / متزوجة</option>
-          <option value="أرمل" className="bg-white text-slate-800 font-normal">أرمل / أرملة</option>
-          <option value="مطلق" className="bg-white text-slate-800 font-normal">مطلق / مطلقة</option>
-          <option value="متوفى" className="bg-white text-slate-800 font-normal">متوفى / متوفاة</option>
-        </select>
-      </div>
+          {/* Age Category Filter */}
+          <div className="relative flex-1 min-w-[125px]">
+            <select
+              value={ageFilter}
+              onChange={(e) => setAgeFilter(e.target.value)}
+              className={`w-full py-1.5 px-2.5 rounded-lg border text-xs font-bold outline-none transition cursor-pointer ${
+                ageFilter 
+                  ? "bg-blue-600 text-white border-blue-600 shadow-xs" 
+                  : "bg-blue-50/90 text-blue-800 border-blue-200 hover:bg-blue-100 focus:ring-2 focus:ring-blue-400"
+              }`}
+            >
+              <option value="" className="bg-white text-slate-800 font-normal">🎂 العمر: الكل</option>
+              <option value="child" className="bg-white text-slate-800 font-normal">أطفال (أقل من 18)</option>
+              <option value="youth" className="bg-white text-slate-800 font-normal">شباب (18 - 35)</option>
+              <option value="adult" className="bg-white text-slate-800 font-normal">بالغون (36 - 59)</option>
+              <option value="senior" className="bg-white text-slate-800 font-normal">كبار السن (60+)</option>
+            </select>
+          </div>
 
-      {/* Clear Active Filters Button */}
-      {(healthFilter || ageFilter || maritalFilter) && (
-        <button
-          type="button"
-          onClick={() => {
-            setHealthFilter("");
-            setAgeFilter("");
-            setMaritalFilter("");
-          }}
-          className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg text-xs transition shrink-0 cursor-pointer"
-          title="إلغاء التصفية"
-        >
-          تفريغ الفلاتر ✕
-        </button>
-      )}
-    </div>
-  );
+          {/* Marital Status Filter */}
+          <div className="relative flex-1 min-w-[125px]">
+            <select
+              value={maritalFilter}
+              onChange={(e) => setMaritalFilter(e.target.value)}
+              className={`w-full py-1.5 px-2.5 rounded-lg border text-xs font-bold outline-none transition cursor-pointer ${
+                maritalFilter 
+                  ? "bg-amber-600 text-white border-amber-600 shadow-xs" 
+                  : "bg-amber-50/90 text-amber-800 border-amber-200 hover:bg-amber-100 focus:ring-2 focus:ring-amber-400"
+              }`}
+            >
+              <option value="" className="bg-white text-slate-800 font-normal">💍 الاجتماعية: الكل</option>
+              <option value="أعزب" className="bg-white text-slate-800 font-normal">أعزب / عازبة</option>
+              <option value="متزوج" className="bg-white text-slate-800 font-normal">متزوج / متزوجة</option>
+              <option value="أرمل" className="bg-white text-slate-800 font-normal">أرمل / أرملة</option>
+              <option value="مطلق" className="bg-white text-slate-800 font-normal">مطلق / مطلقة</option>
+              <option value="متوفى" className="bg-white text-slate-800 font-normal">متوفى / متوفاة</option>
+            </select>
+          </div>
+        </div>
+
+        {/* الصف الثاني: الألقاب، المواليد والوفيات (أخضر زمردي)، المؤهل (عنبر/أصفر هادئ) */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full">
+          {/* Title Filter (قائمة الألقاب) */}
+          <div className="relative flex-1 min-w-[125px]">
+            <select
+              value={titleFilter}
+              onChange={(e) => setTitleFilter(e.target.value)}
+              className={`w-full py-1.5 px-2.5 rounded-lg border text-xs font-bold outline-none transition cursor-pointer ${
+                titleFilter 
+                  ? "bg-indigo-600 text-white border-indigo-600 shadow-xs" 
+                  : "bg-indigo-50/90 text-indigo-800 border-indigo-200 hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-400"
+              }`}
+            >
+              <option value="" className="bg-white text-slate-800 font-normal">🏷️ اللقب: الكل ({availableTitles.length})</option>
+              {availableTitles.map((t) => (
+                <option key={t} value={t} className="bg-white text-slate-800 font-normal">{t}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Vital Status Filter (قائمة المواليد والوفيات - Emerald Green / أخضر زمردي) */}
+          <div className="relative flex-1 min-w-[125px]">
+            <select
+              value={vitalFilter}
+              onChange={(e) => setVitalFilter(e.target.value)}
+              className={`w-full py-1.5 px-2.5 rounded-lg border text-xs font-bold outline-none transition cursor-pointer ${
+                vitalFilter 
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-xs" 
+                  : "bg-emerald-50/90 text-emerald-800 border-emerald-200 hover:bg-emerald-100 focus:ring-2 focus:ring-emerald-400"
+              }`}
+            >
+              <option value="" className="bg-white text-slate-800 font-normal">👶/💀 المواليد والوفيات: الكل</option>
+              <option value="living" className="bg-white text-slate-800 font-normal">الأحياء فقط (النشطين)</option>
+              <option value="births" className="bg-white text-slate-800 font-normal">المواليد حديثاً (2024 - 2026)</option>
+              <option value="deceased" className="bg-white text-slate-800 font-normal">الوفيات / المتوفين (رحمهم الله)</option>
+            </select>
+          </div>
+
+          {/* Qualification Filter (قائمة المؤهل - Amber/Yellow / أصفر هادئ) */}
+          <div className="relative flex-1 min-w-[125px]">
+            <select
+              value={qualificationFilter}
+              onChange={(e) => setQualificationFilter(e.target.value)}
+              className={`w-full py-1.5 px-2.5 rounded-lg border text-xs font-bold outline-none transition cursor-pointer ${
+                qualificationFilter 
+                  ? "bg-amber-500 text-white border-amber-500 shadow-xs" 
+                  : "bg-amber-50/90 text-amber-800 border-amber-200 hover:bg-amber-100 focus:ring-2 focus:ring-amber-400"
+              }`}
+            >
+              <option value="" className="bg-white text-slate-800 font-normal">🎓 المؤهل العلمي: الكل</option>
+              {QUALIFICATIONS.map((q) => (
+                <option key={q} value={q} className="bg-white text-slate-800 font-normal">{q}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Clear Active Filters Button */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                setHealthFilter("");
+                setAgeFilter("");
+                setMaritalFilter("");
+                setTitleFilter("");
+                setVitalFilter("");
+                setQualificationFilter("");
+              }}
+              className="px-2.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold rounded-lg text-xs transition shrink-0 cursor-pointer border border-rose-200 shadow-2xs"
+              title="إلغاء كافة الفلاتر"
+            >
+              تفريغ الفلاتر ✕
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
 
   const incompleteRecordsCount = useMemo(() => {
     let count = 0;
@@ -337,7 +424,12 @@ export default function App() {
   };
 
   const handleStartEditDependent = (dep: Dependent) => {
-    setEditingDependent(dep);
+    const hostFam = families.find(f => f.familyCode === dep.familyCode);
+    const cleanedName = extractIndividualName(dep.name, hostFam?.headName, hostFam?.title || dep.title);
+    setEditingDependent({
+      ...dep,
+      name: cleanedName
+    });
     if (dep.residency === "خارج القرية") {
       const loc = dep.location || "";
       if (loc.includes(" - ")) {
@@ -368,6 +460,7 @@ export default function App() {
       }
     }
     fetchData();
+    fetchSchema();
   }, []);
 
   // Auto-sync families and dependents to localStorage for 100% offline capability
@@ -397,13 +490,23 @@ export default function App() {
         // 1. Strict Data Cleansing
         const validFamilies = rawFamilies.filter(f => f.headName && String(f.headName).trim() !== '');
 
-        // 2. Auto Family Code Generation (e.g. FAM-001, FAM-062)
+        // 2. Auto Family Code Generation & Official Excel Title Matching
         validFamilies.forEach((f, idx) => {
           let code = cleanString(f.familyCode);
           if (!code || code === "FAM-" || code.endsWith("-") || code.trim() === "") {
             const paddedNum = String(idx + 1).padStart(3, '0');
             f.familyCode = `FAM-${paddedNum}`;
           }
+          const officialTitle = getExcelTitleForHeadName(f.headName);
+          if (officialTitle) {
+            f.title = officialTitle;
+          }
+        });
+
+        // Map family titles for dependents sync
+        const familyTitleMap = new Map<string, string>();
+        validFamilies.forEach(f => {
+          if (f.familyCode && f.title) familyTitleMap.set(f.familyCode, f.title);
         });
 
         // 3. Auto-Generated Placeholder Dependents
@@ -432,6 +535,13 @@ export default function App() {
                 });
               }
             }
+          }
+        });
+
+        // Ensure dependent titles match their family title
+        updatedDependents.forEach(d => {
+          if (d.familyCode && familyTitleMap.has(d.familyCode)) {
+            d.title = familyTitleMap.get(d.familyCode)!;
           }
         });
 
@@ -614,12 +724,24 @@ export default function App() {
       const data = await response.json();
       if (response.ok && data.status === "success") {
         setSchemaNeighborhoods(data.neighborhoods || []);
-        setSchemaTitles(data.titles || []);
-        setSchemaMaritalStatuses(data.maritalStatuses || []);
+        const mergedTitles = Array.from(new Set([...(data.titles || []), ...ALL_UNIQUE_EXCEL_TITLES]));
+        setSchemaTitles(mergedTitles);
+        const mergedMarital = Array.from(new Set([...(data.maritalStatuses || []), ...MARITAL_STATUSES]));
+        setSchemaMaritalStatuses(mergedMarital);
         setSchemaHealthStatuses(data.healthStatuses || []);
+        localStorage.setItem("census_schema_titles", JSON.stringify(mergedTitles));
       }
     } catch (err) {
-      console.error("Failed to fetch schema:", err);
+      console.error("Failed to fetch schema, using local storage fallback:", err);
+      const cached = localStorage.getItem("census_schema_titles");
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSchemaTitles(parsed);
+          }
+        } catch {}
+      }
     }
   };
 
@@ -875,6 +997,9 @@ export default function App() {
       let updatedResidency = editingDependent.residency;
       let updatedLocation = editingDependent.location || "";
 
+      const hostFam = families.find(f => f.familyCode === editingDependent.familyCode);
+      const cleanedName = extractIndividualName(editingDependent.name, hostFam?.headName, hostFam?.title || editingDependent.title);
+
       if (editingDependent.residency === "خارج القرية") {
         updatedResidency = "خارج القرية";
         if (editDepGov === "مكان آخر (إدخال يدوي)") {
@@ -885,7 +1010,6 @@ export default function App() {
             : editDepGov;
         }
       } else if (editingDependent.residency === "حسب إقامة الأسرة (تلقائياً)" || !editingDependent.residency) {
-        const hostFam = families.find(f => f.familyCode === editingDependent.familyCode);
         if (hostFam) {
           updatedResidency = hostFam.residency;
           updatedLocation = hostFam.location;
@@ -896,6 +1020,7 @@ export default function App() {
 
       const payload = {
         ...editingDependent,
+        name: cleanedName,
         residency: updatedResidency,
         location: updatedLocation
       };
@@ -1148,6 +1273,170 @@ export default function App() {
     }
   };
 
+  // Bulk sync surnames & family titles from Google Sheets
+  const handleSyncTitles = async () => {
+    const effectiveScriptUrl = googleScriptUrl || localStorage.getItem("census_google_script_url") || DEFAULT_GOOGLE_SCRIPT_URL;
+
+    try {
+      addLog("🔄 جاري الاتصال بجداول جوجل لجلب ومزامنة كافة الألقاب وأسماء الأسر...");
+      
+      const response = await fetch("/api/sync-titles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ googleScriptUrl: effectiveScriptUrl })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === "success" && Array.isArray(data.titles)) {
+          setSchemaTitles(data.titles);
+          localStorage.setItem("census_schema_titles", JSON.stringify(data.titles));
+
+          // Also bulk update current families in React state
+          let matchedCount = 0;
+          const updatedFamilies = families.map((fam) => {
+            const officialTitle = getExcelTitleForHeadName(fam.headName);
+            if (officialTitle) {
+              if (officialTitle !== fam.title) matchedCount++;
+              return { ...fam, title: officialTitle };
+            }
+            return fam;
+          });
+
+          const famTitleMap = new Map<string, string>();
+          updatedFamilies.forEach(f => {
+            if (f.familyCode && f.title) famTitleMap.set(f.familyCode, f.title);
+          });
+
+          const updatedDependentsList = dependents.map(d => {
+            if (d.familyCode && famTitleMap.has(d.familyCode)) {
+              return { ...d, title: famTitleMap.get(d.familyCode)! };
+            }
+            return d;
+          });
+
+          setFamilies(updatedFamilies);
+          setDependents(updatedDependentsList);
+          localStorage.setItem("census_families", JSON.stringify(updatedFamilies));
+          localStorage.setItem("census_dependents", JSON.stringify(updatedDependentsList));
+
+          addLog(`✅ [مزامنة الألقاب]: تم تحديث وتطبيق الألقاب المعتمدة وفق ملف الإكسل لـ ${matchedCount || updatedFamilies.length} أسرة بنجاح`);
+          setToastMessage(`تم جلب ومزامنة ${data.titles.length} لقباً ومطابقة ألقاب الأسر بنجاح!`);
+          setTimeout(() => setToastMessage(null), 6000);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Backend /api/sync-titles failed or offline, performing direct fetch:", err);
+    }
+
+    // Direct fetch fallback from Google Apps Script if server API endpoint is not reachable
+    if (!effectiveScriptUrl) {
+      alert("يرجى تهيئة رابط Google Apps Script أولاً في الإعدادات");
+      return;
+    }
+
+    try {
+      const directResp = await fetch(effectiveScriptUrl + (effectiveScriptUrl.includes("?") ? "&" : "?") + "action=pull");
+      if (!directResp.ok) throw new Error("تعذر جلب البيانات المباشرة من سكريبت جوجل");
+      const resData = await directResp.json();
+      
+      const fetchedFam = resData.families || [];
+      const fetchedDep = resData.dependents || [];
+
+      const titlesSet = new Set<string>(schemaTitles.length > 0 ? schemaTitles : ["الخطيب", "الغرافي", "الجعفري", "المجيدي", "بدون لقب"]);
+
+      // Extract titles from families
+      fetchedFam.forEach((f: any) => {
+        const t = cleanString(f.title || f["اللقب"]);
+        if (t && t !== "بدون لقب" && t.length >= 2) {
+          titlesSet.add(t);
+        }
+        const head = cleanString(f.headName || f["رب الأسرة"]);
+        if (head) {
+          const parts = head.split(/\s+/);
+          if (parts.length >= 2) {
+            const surname = parts[parts.length - 1];
+            if (surname.startsWith("ال") && surname.length >= 4) {
+              titlesSet.add(surname);
+            }
+          }
+        }
+      });
+
+      // Extract titles from dependents
+      fetchedDep.forEach((d: any) => {
+        const t = cleanString(d.title || d["اللقب"]);
+        if (t && t !== "بدون لقب" && t.length >= 2) {
+          titlesSet.add(t);
+        }
+      });
+
+      // Extract from local families and dependents as well, plus ALL_UNIQUE_EXCEL_TITLES
+      ALL_UNIQUE_EXCEL_TITLES.forEach(t => titlesSet.add(t));
+      families.forEach((f) => {
+        if (f.title && f.title !== "بدون لقب" && f.title.length >= 2) titlesSet.add(cleanString(f.title));
+      });
+      validDependents.forEach((d) => {
+        if (d.title && d.title !== "بدون لقب" && d.title.length >= 2) titlesSet.add(cleanString(d.title));
+      });
+
+      const updatedList = Array.from(titlesSet).filter(Boolean);
+      if (!updatedList.includes("بدون لقب")) {
+        updatedList.push("بدون لقب");
+      }
+
+      setSchemaTitles(updatedList);
+      localStorage.setItem("census_schema_titles", JSON.stringify(updatedList));
+
+      // Match and update local families
+      let localMatched = 0;
+      const updatedFamilies = families.map((fam) => {
+        const officialTitle = getExcelTitleForHeadName(fam.headName);
+        if (officialTitle) {
+          if (officialTitle !== fam.title) localMatched++;
+          return { ...fam, title: officialTitle };
+        }
+        return fam;
+      });
+
+      const famTitleMap = new Map<string, string>();
+      updatedFamilies.forEach(f => {
+        if (f.familyCode && f.title) famTitleMap.set(f.familyCode, f.title);
+      });
+
+      const updatedDependentsList = dependents.map(d => {
+        if (d.familyCode && famTitleMap.has(d.familyCode)) {
+          return { ...d, title: famTitleMap.get(d.familyCode)! };
+        }
+        return d;
+      });
+
+      setFamilies(updatedFamilies);
+      setDependents(updatedDependentsList);
+      localStorage.setItem("census_families", JSON.stringify(updatedFamilies));
+      localStorage.setItem("census_dependents", JSON.stringify(updatedDependentsList));
+
+      // Post to /api/schema
+      await fetch("/api/schema", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          neighborhoods: schemaNeighborhoods,
+          titles: updatedList,
+          maritalStatuses: schemaMaritalStatuses,
+          healthStatuses: schemaHealthStatuses
+        })
+      }).catch(() => {});
+
+      addLog(`✅ [مزامنة الألقاب المباشرة]: تم تحديث ${updatedList.length} لقباً ومطابقة ألقاب الأسر بنجاح`);
+      setToastMessage(`تم جلب ومزامنة ${updatedList.length} لقباً ومطابقة ألقاب الأسر بنجاح!`);
+      setTimeout(() => setToastMessage(null), 6000);
+    } catch (err: any) {
+      alert(`فشلت مزامنة الألقاب: ${err.message || "خطأ اتصال مع سكريبت جوجل"}`);
+    }
+  };
+
   // Toggle family expansion row
   const toggleFamilyRow = (code: string) => {
     setExpandedFamilies((prev) => ({
@@ -1200,24 +1489,53 @@ export default function App() {
       }
 
       let matchesExt = true;
-      if (healthFilter || ageFilter || maritalFilter) {
-        const headMatch = matchesHealthFilter(f.healthStatus, healthFilter) &&
-                          matchesAgeFilter(f.birthDate, ageFilter) &&
-                          matchesMaritalFilter(f.maritalStatus, maritalFilter);
-
+      if (healthFilter || ageFilter || maritalFilter || titleFilter || vitalFilter || qualificationFilter) {
         const familyDeps = validDependents.filter(d => d.familyCode === f.familyCode);
-        const depMatch = familyDeps.some(d => 
-          matchesHealthFilter(d.healthStatus, healthFilter) &&
-          matchesAgeFilter(d.birthDate, ageFilter) &&
-          matchesMaritalFilter(d.maritalStatus, maritalFilter)
-        );
 
-        matchesExt = headMatch || depMatch;
+        // Health
+        const headHealth = matchesHealthFilter(f.healthStatus, healthFilter);
+        const depHealth = familyDeps.some(d => matchesHealthFilter(d.healthStatus, healthFilter));
+        const healthOk = !healthFilter || headHealth || depHealth;
+
+        // Age
+        const headAge = matchesAgeFilter(f.birthDate, ageFilter);
+        const depAge = familyDeps.some(d => matchesAgeFilter(d.birthDate, ageFilter));
+        const ageOk = !ageFilter || headAge || depAge;
+
+        // Marital
+        const headMarital = matchesMaritalFilter(f.maritalStatus, maritalFilter, f.deathDate);
+        const depMarital = familyDeps.some(d => matchesMaritalFilter(d.maritalStatus, maritalFilter, d.deathDate));
+        const maritalOk = !maritalFilter || headMarital || depMarital;
+
+        // Title
+        const headTitle = !titleFilter || (f.title && f.title.trim().toLowerCase() === titleFilter.trim().toLowerCase());
+        const depTitle = familyDeps.some(d => d.title && d.title.trim().toLowerCase() === titleFilter.trim().toLowerCase());
+        const titleOk = !titleFilter || headTitle || depTitle;
+
+        // Qualification
+        const headQual = !qualificationFilter || (f.qualification && f.qualification.trim().toLowerCase() === qualificationFilter.trim().toLowerCase());
+        const depQual = familyDeps.some(d => d.qualification && d.qualification.trim().toLowerCase() === qualificationFilter.trim().toLowerCase());
+        const qualOk = !qualificationFilter || headQual || depQual;
+
+        // Vital (Mowaleed & Wafaat / Living)
+        let vitalOk = true;
+        const headDead = isDeceasedStatus(f.maritalStatus, f.deathDate);
+        const headRecent = isRecentBirthDate(f.birthDate);
+
+        if (vitalFilter === "living") {
+          vitalOk = !headDead || familyDeps.some(d => !isDeceasedStatus(d.maritalStatus, d.deathDate));
+        } else if (vitalFilter === "births") {
+          vitalOk = headRecent || familyDeps.some(d => isRecentBirthDate(d.birthDate));
+        } else if (vitalFilter === "deceased") {
+          vitalOk = headDead || familyDeps.some(d => isDeceasedStatus(d.maritalStatus, d.deathDate));
+        }
+
+        matchesExt = healthOk && ageOk && maritalOk && titleOk && qualOk && vitalOk;
       }
 
       return matchesSearch && matchesHood && matchesExt;
     });
-  }, [families, validDependents, familySearch, familyHoodFilter, validCleanHoods, healthFilter, ageFilter, maritalFilter]);
+  }, [families, validDependents, familySearch, familyHoodFilter, validCleanHoods, healthFilter, ageFilter, maritalFilter, titleFilter, vitalFilter, qualificationFilter]);
 
   // Memoized Filtered Dependents with O(1) map lookup
   const filteredDependents = useMemo(() => {
@@ -1243,21 +1561,38 @@ export default function App() {
       }
 
       let matchesExt = true;
-      if (healthFilter || ageFilter || maritalFilter) {
-        matchesExt = matchesHealthFilter(d.healthStatus, healthFilter) &&
-                     matchesAgeFilter(d.birthDate, ageFilter) &&
-                     matchesMaritalFilter(d.maritalStatus, maritalFilter);
+      if (healthFilter || ageFilter || maritalFilter || titleFilter || vitalFilter || qualificationFilter) {
+        const hostFam = famMap.get(d.familyCode);
+
+        const healthOk = matchesHealthFilter(d.healthStatus, healthFilter);
+        const ageOk = matchesAgeFilter(d.birthDate, ageFilter);
+        const maritalOk = matchesMaritalFilter(d.maritalStatus, maritalFilter, d.deathDate);
+
+        const titleOk = !titleFilter || (d.title && d.title.trim().toLowerCase() === titleFilter.trim().toLowerCase()) || (hostFam?.title && hostFam.title.trim().toLowerCase() === titleFilter.trim().toLowerCase());
+        const qualOk = !qualificationFilter || (d.qualification && d.qualification.trim().toLowerCase() === qualificationFilter.trim().toLowerCase());
+
+        let vitalOk = true;
+        const dead = isDeceasedStatus(d.maritalStatus, d.deathDate);
+        if (vitalFilter === "living") {
+          vitalOk = !dead;
+        } else if (vitalFilter === "births") {
+          vitalOk = !dead && isRecentBirthDate(d.birthDate);
+        } else if (vitalFilter === "deceased") {
+          vitalOk = dead;
+        }
+
+        matchesExt = healthOk && ageOk && maritalOk && titleOk && qualOk && vitalOk;
       }
 
       return matchesSearch && matchesExt;
     });
-  }, [validDependents, families, dependentSearch, healthFilter, ageFilter, maritalFilter]);
+  }, [validDependents, families, dependentSearch, healthFilter, ageFilter, maritalFilter, titleFilter, vitalFilter, qualificationFilter]);
 
   // Reset pagination to page 1 on filter changes
   useEffect(() => {
     setFamilyPage(1);
     setDependentPage(1);
-  }, [familySearch, familyHoodFilter, dependentSearch, healthFilter, ageFilter, maritalFilter]);
+  }, [familySearch, familyHoodFilter, dependentSearch, healthFilter, ageFilter, maritalFilter, titleFilter, vitalFilter, qualificationFilter]);
 
   // Sliced paginated items for ultra-fast DOM rendering
   const paginatedFamilies = useMemo(() => {
@@ -1803,11 +2138,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Single-line extended filter dropdowns */}
-                <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/80 backdrop-blur-xs">
-                  {renderExtendedSearchDropdowns()}
-                </div>
-
                 <div className="relative">
                   <input
                     type="text"
@@ -1824,6 +2154,11 @@ export default function App() {
                       ✕
                     </button>
                   )}
+                </div>
+
+                {/* Integrated extended filter dropdowns */}
+                <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/80 backdrop-blur-xs">
+                  {renderExtendedSearchDropdowns()}
                 </div>
 
                 {/* Real-time search results preview */}
@@ -1936,7 +2271,7 @@ export default function App() {
                 })()}
               </div>
 
-              <CensusAnalytics families={families} dependents={dependents} neighborhoods={schemaNeighborhoods} />
+              <CensusAnalytics families={filteredFamilies} dependents={filteredDependents} neighborhoods={schemaNeighborhoods} />
             </div>
           )}
 
@@ -2120,7 +2455,7 @@ export default function App() {
                       paginatedFamilies.map((fam, index) => {
                         const isExpanded = expandedFamilies[fam.familyCode] || false;
                         const familyDeps = validDependents.filter((d) => d.familyCode === fam.familyCode);
-                        const isDead = fam.deathDate ? true : false;
+                        const isDead = isDeceasedStatus(fam.maritalStatus, fam.deathDate);
                         const isSelected = selectedFamilyIds.includes(fam.id);
                         const displayIndex = (familyPageSize > 0 ? (familyPage - 1) * familyPageSize : 0) + index + 1;
 
@@ -2279,7 +2614,7 @@ export default function App() {
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
                                           {familyDeps.map((dep, depIdx) => {
-                                            const isDepDead = dep.maritalStatus === "متوفى";
+                                            const isDepDead = isDeceasedStatus(dep.maritalStatus, dep.deathDate);
                                             return (
                                               <tr key={`famdep-${dep.id || 'noid'}-${dep.familyCode || ''}-${depIdx}`} className={`hover:bg-slate-50/50 ${isDepDead ? "bg-rose-50/20" : ""}`}>
                                                 <td className={`px-3 py-2.5 font-semibold ${isDepDead ? "line-through text-slate-400" : "text-slate-700"}`}>
@@ -2497,7 +2832,7 @@ export default function App() {
                     ) : (
                       paginatedDependents.map((dep, index) => {
                         const hostFamily = families.find((f) => f.familyCode === dep.familyCode);
-                        const isDepDead = dep.maritalStatus === "متوفى";
+                        const isDepDead = isDeceasedStatus(dep.maritalStatus, dep.deathDate);
                         const isSelected = selectedDependentIds.includes(dep.id);
                         const fullName = formatDependentFullName(dep, hostFamily);
                         const displayIndex = (dependentPageSize > 0 ? (dependentPage - 1) * dependentPageSize : 0) + index + 1;
@@ -2610,6 +2945,7 @@ export default function App() {
             googleScriptUrl={googleScriptUrl}
             onSaveUrl={handleSaveGoogleUrl}
             onSync={handleSync}
+            onSyncTitles={handleSyncTitles}
             syncLog={syncLog}
             familiesCount={families.length}
             dependentsCount={validDependents.length}
@@ -2785,16 +3121,29 @@ export default function App() {
               {/* Titles Management */}
               <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden">
                 <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                  <h3 className="font-bold text-slate-900 text-sm">إدارة الألقاب</h3>
-                  <button 
-                    onClick={() => {
-                      const name = prompt("أدخل اللقب الجديد:");
-                      if (name) setSchemaTitles([...schemaTitles, name.trim()]);
-                    }}
-                    className="text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded transition"
-                  >
-                    + إضافة لقب
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-slate-900 text-sm">إدارة الألقاب</h3>
+                    <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold">{schemaTitles.length}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button 
+                      type="button"
+                      onClick={handleSyncTitles}
+                      className="text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2.5 py-1 rounded-lg transition flex items-center gap-1"
+                      title="استخراج وتحديث كافة الألقاب وأسماء العائلات من جدول جوجل تلقائياً"
+                    >
+                      <span>🔄 جلب ومزامنة من جوجل</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const name = prompt("أدخل اللقب الجديد:");
+                        if (name) setSchemaTitles([...schemaTitles, name.trim()]);
+                      }}
+                      className="text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded transition"
+                    >
+                      + إضافة لقب
+                    </button>
+                  </div>
                 </div>
                 <div className="p-4 h-[300px] overflow-y-auto space-y-2">
                   {schemaTitles.map((title, idx) => (
@@ -2913,7 +3262,7 @@ export default function App() {
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-slate-600">اللقب</label>
+                    <label className="text-xs font-bold text-slate-600">اللقب الأساسي (العمود I)</label>
                     <select
                       value={editingFamily.title}
                       onChange={(e) => setEditingFamily({ ...editingFamily, title: e.target.value })}
@@ -2923,6 +3272,17 @@ export default function App() {
                         <option key={`${t}-${idx}`} value={t}>{t}</option>
                       ))}
                     </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-slate-600">اللقب الفرعي / الشهرة (اختياري)</label>
+                    <input
+                      type="text"
+                      value={editingFamily.subTitle || ""}
+                      onChange={(e) => setEditingFamily({ ...editingFamily, subTitle: e.target.value })}
+                      placeholder="مثال: حاجب، عثمان..."
+                      className="px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-emerald-500 text-xs bg-white"
+                    />
                   </div>
 
                   <div className="flex flex-col gap-1">
@@ -3017,7 +3377,15 @@ export default function App() {
                     <label className="text-xs font-bold text-slate-600">الحالة الاجتماعية</label>
                     <select
                       value={editingFamily.maritalStatus}
-                      onChange={(e) => setEditingFamily({ ...editingFamily, maritalStatus: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const isDeadVal = val.includes("متوفي") || val.includes("متوفى");
+                        setEditingFamily({
+                          ...editingFamily,
+                          maritalStatus: val,
+                          ...(isDeadVal ? { healthStatus: "متوفى" } : {})
+                        });
+                      }}
                       className="px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-emerald-500 text-xs bg-white"
                     >
                       {schemaMaritalStatuses.map((status, idx) => (
@@ -3154,28 +3522,27 @@ export default function App() {
 
       {/* -------------------- INLINE EDIT MODAL: Dependent -------------------- */}
       {editingDependent && (() => {
-        const trimmedName = editingDependent.name.trim();
-        const depWords = trimmedName.split(/\s+/).filter(Boolean);
-        const isDepSpace = editingDependent.name.includes(" ") || depWords.length > 1;
+        const hostFam = families.find(f => f.familyCode === editingDependent.familyCode);
+        const rawTrimmed = editingDependent.name.trim();
+        const cleanedDepName = extractIndividualName(rawTrimmed, hostFam?.headName, hostFam?.title || editingDependent.title);
 
         let isDepDuplicate = false;
-        if (trimmedName) {
-          const hostFam = families.find(f => f.familyCode === editingDependent.familyCode);
+        if (cleanedDepName) {
           if (hostFam && hostFam.headName) {
             const hostHeadWords = hostFam.headName.trim().split(/\s+/).filter(Boolean);
-            if (hostHeadWords[0] && hostHeadWords[0].toLowerCase() === trimmedName.toLowerCase()) {
+            if (hostHeadWords[0] && hostHeadWords[0].toLowerCase() === cleanedDepName.toLowerCase()) {
               isDepDuplicate = true;
             }
           }
           if (!isDepDuplicate) {
             const otherDeps = dependents.filter(d => d.familyCode === editingDependent.familyCode && d.id !== editingDependent.id);
-            if (otherDeps.some(d => d.name && d.name.trim().toLowerCase() === trimmedName.toLowerCase())) {
+            if (otherDeps.some(d => d.name && extractIndividualName(d.name, hostFam?.headName, hostFam?.title).toLowerCase() === cleanedDepName.toLowerCase())) {
               isDepDuplicate = true;
             }
           }
         }
 
-        const isFormInvalid = !trimmedName || isDepSpace || isDepDuplicate;
+        const isFormInvalid = !rawTrimmed || isDepDuplicate;
         const isOutsideVillage = editingDependent.residency === "خارج القرية";
 
         return (
@@ -3202,23 +3569,41 @@ export default function App() {
                       onChange={(e) => setEditingDependent({ ...editingDependent, name: e.target.value })}
                       placeholder="مثال: حلمي"
                       className={`px-3 py-2 border rounded-lg outline-none transition text-xs bg-white ${
-                        isDepSpace || isDepDuplicate
+                        isDepDuplicate
                           ? "border-rose-500 bg-rose-50/50 text-rose-900 focus:ring-2 focus:ring-rose-500"
                           : "border-slate-200 focus:border-blue-500"
                       }`}
                     />
-                    {isDepSpace && (
-                      <p className="text-[11px] font-bold text-rose-600 flex items-center gap-1 mt-0.5">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                        <span>⚠️ يُسمح بكتابة الاسم الأول فقط للتابع (كلمة واحدة بدون مسافات)</span>
-                      </p>
-                    )}
-                    {!isDepSpace && isDepDuplicate && (
+                    {isDepDuplicate && (
                       <p className="text-[11px] font-bold text-rose-600 flex items-center gap-1 mt-0.5">
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                         <span>⚠️ هذا الاسم مستخدم سابقاً داخل نفس العائلة!</span>
                       </p>
                     )}
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-slate-600">اللقب الأساسي (العمود I)</label>
+                    <select
+                      value={editingDependent.title || hostFam?.title || "بدون لقب"}
+                      onChange={(e) => setEditingDependent({ ...editingDependent, title: e.target.value })}
+                      className="px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500 text-xs bg-white"
+                    >
+                      {schemaTitles.map((t, idx) => (
+                        <option key={`deptitle-${t}-${idx}`} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-slate-600">اللقب الفرعي / الشهرة (اختياري)</label>
+                    <input
+                      type="text"
+                      value={editingDependent.subTitle || ""}
+                      onChange={(e) => setEditingDependent({ ...editingDependent, subTitle: e.target.value })}
+                      placeholder="مثال: حاجب، عثمان..."
+                      className="px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500 text-xs bg-white"
+                    />
                   </div>
 
                   <div className="flex flex-col gap-1">
@@ -3363,7 +3748,15 @@ export default function App() {
                     <label className="text-xs font-bold text-slate-600">الحالة الاجتماعية</label>
                     <select
                       value={editingDependent.maritalStatus || "أعزب/عزباء"}
-                      onChange={(e) => setEditingDependent({ ...editingDependent, maritalStatus: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const isDeadVal = val.includes("متوفي") || val.includes("متوفى");
+                        setEditingDependent({
+                          ...editingDependent,
+                          maritalStatus: val,
+                          ...(isDeadVal ? { healthStatus: "متوفى" } : {})
+                        });
+                      }}
                       className="px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500 text-xs bg-white"
                     >
                       {schemaMaritalStatuses.map((status, idx) => (

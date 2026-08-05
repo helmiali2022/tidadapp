@@ -1,7 +1,8 @@
+import { ReactNode } from "react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, Legend } from "recharts";
 import { Family, Dependent } from "../types";
-import { NEIGHBORHOODS, VALID_NEIGHBORHOODS } from "../data";
-import { Users, Home, UserCheck, Heart, Landmark, Award, GraduationCap, Bookmark, BarChart3 } from "lucide-react";
+import { NEIGHBORHOODS, VALID_NEIGHBORHOODS, isDeceasedStatus } from "../data";
+import { Users, Home, UserCheck, Heart, Landmark, Award, GraduationCap, Bookmark, BarChart3, Filter } from "lucide-react";
 
 interface CensusAnalyticsProps {
   families: Family[];
@@ -24,17 +25,17 @@ export default function CensusAnalytics({ families, dependents, neighborhoods }:
   // 1. Calculations
   const totalFamilies = families.length;
   
-  // Total living family heads (those without deathDate)
-  const livingHeads = families.filter((f) => !f.deathDate);
+  // Total living family heads (those not deceased)
+  const livingHeads = families.filter((f) => !isDeceasedStatus(f.maritalStatus, f.deathDate));
   const totalLivingHeadsCount = livingHeads.length;
-  const deadHeadsCount = families.filter((f) => f.deathDate).length;
+  const deadHeadsCount = families.filter((f) => isDeceasedStatus(f.maritalStatus, f.deathDate)).length;
 
-  // Total living dependents (those not marked 'متوفى')
-  const livingDependents = validDependents.filter((d) => cleanString(d.maritalStatus) !== cleanString("متوفى"));
+  // Total living dependents (those not deceased)
+  const livingDependents = validDependents.filter((d) => !isDeceasedStatus(d.maritalStatus, d.deathDate));
   const totalLivingDependentsCount = livingDependents.length;
-  const deadDependentsCount = validDependents.filter((d) => cleanString(d.maritalStatus) === cleanString("متوفى")).length;
+  const deadDependentsCount = validDependents.filter((d) => isDeceasedStatus(d.maritalStatus, d.deathDate)).length;
 
-  const totalLivingPopulation = families.length + validDependents.length;
+  const totalLivingPopulation = livingHeads.length + livingDependents.length;
   const totalRecordedDeaths = deadHeadsCount + deadDependentsCount;
 
   // Genders
